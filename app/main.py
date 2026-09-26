@@ -38,7 +38,8 @@ def get_profile(s):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, s: Session=Depends(db)):
-    return templates.TemplateResponse("index.html", {"request":request, "jobs":s.query(Job).order_by(Job.match_score.desc()).limit(25).all(), "apps":s.query(Application).order_by(Application.created_at.desc()).limit(10).all(), "profile":get_profile(s)})
+    context = {"request": request, "jobs": s.query(Job).order_by(Job.match_score.desc()).limit(25).all(), "apps": s.query(Application).order_by(Application.created_at.desc()).limit(10).all(), "profile": get_profile(s)}
+    return templates.TemplateResponse(request=request, name="index.html", context=context)
 
 @app.get("/api/health")
 def health(): return {"status":"ok","service":"JobHunt AI","version":"1.0.0"}
