@@ -142,6 +142,55 @@ def approve(application_id:int,s:Session=Depends(db)):
     if not a: raise HTTPException(404,"Application not found")
     a.approved=True; a.status="approved_for_submission"; s.commit(); return {"approved":True,"next_step":"Use the browser workflow or submit manually after review."}
 
+@app.post("/api/agent/run")
+async def agent_run(s: Session=Depends(db)):
+    """Run the career agent in safe mode when autonomous submission is disabled.
+
+    Safe mode discovers and qualifies roles and prepares application drafts; it
+    never submits applications unless AUTO_SUBMIT is explicitly enabled.
+    """
+    from .config import settings
+    profile = get_profile(s)
+    query = f"{profile.headline or 'software engineer'} {profile.preferences or 'junior graduate remote Nigeria'}"
+    discovered = 0
+    if settings.tavily_api_key:
+        results = await SearchService().search(query, 20)
+        for r in results:
+            url = r.get("url", "")
+            if not url or s.query(Job).filter_by(url=url).first():
+                continue
+            title = r.get("title", "")
+            desc = r.get("content", "")
+            company = r.get("company", "") or ""
+            j = Job(title=title, company=company, location="", url=url,
+                    source=SearchService.source_for(url), description=desc,
+                    remote="remote" in (title + " " + desc).lower())
+            s.add(j); discovered += 1
+        s.commit()
+
+    text = " ".join([profile.skills or "", profile.projects or "", profile.experience or "", profile.education or "", profile.preferences or ""])
+    jobs = s.query(Job).order_by(Job.created_at.desc()).limit(50).all()
+    qualified = 0
+    drafts = 0
+    for j in jobs:
+        r = match_job(j.title + " " + (j.description or ""), text, profile.preferences or "")
+        j.match_score = r.score
+        j.qualification = json.dumps({"matched": r.matched, "gaps": r.gaps, "rationale": r.rationale})
+        j.status = "qualified" if r.score >= settings.minimum_match_score else "review"
+        if j.status == "qualified":
+            qualified += 1
+            a = s.query(Application).filter_by(job_id=j.id).first()
+            if not a:
+                s.add(Application(job_id=j.id, status="application_draft")); drafts += 1
+    s.commit()
+
+    if settings.auto_submit:
+        execution = await automation_run(s)
+        return {"mode": "autonomous", "discovered": discovered, "qualified": qualified, "drafts": drafts, **execution}
+    return {"mode": "safe", "discovered": discovered, "qualified": qualified, "drafts": drafts,
+            "message": "Roles discovered, scored and prepared. Submission remains off until you explicitly enable AUTO_SUBMIT."}
+
+
 @app.post("/api/automation/run")
 async def automation_run(s:Session=Depends(db)):
     from .config import settings
