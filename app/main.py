@@ -103,7 +103,7 @@ def automation_status(s: Session=Depends(db)):
     submitted=s.query(Application).filter(Application.status=="submitted", Application.submitted_at!=None, Application.submitted_at>=datetime.combine(today, datetime.min.time())).count()
     return {"enabled":settings.auto_submit,"submitted_today":submitted,"daily_limit":settings.max_applications_per_day,"remaining":max(0,settings.max_applications_per_day-submitted),"threshold":settings.minimum_match_score}
 
-@app.post("/api/cron/agent")
+@app.api_route("/api/cron/agent", methods=["GET", "POST"])
 async def cron_agent(request: Request, s: Session=Depends(db)):
     from .config import settings
     if settings.cron_secret:

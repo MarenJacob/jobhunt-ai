@@ -1,6 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
+    """Application settings.
+
+    Vercel can expose an environment variable as an empty string when a user
+    creates it without a value. ``env_ignore_empty=True`` makes empty values
+    fall back to the defaults below instead of crashing Pydantic validation.
+    """
+
     app_name: str = "JobHunt AI"
     database_url: str = "sqlite:///./storage/job_hunt.db"
     secret_key: str = "change-me-in-production"
@@ -23,6 +31,12 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     cron_secret: str = ""
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_ignore_empty=True,
+        extra="ignore",
+    )
+
 
 settings = Settings()
