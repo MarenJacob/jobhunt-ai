@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07090f"><title>JobHunt AI — Autonomous Career Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><strong>JobHunt</strong><small>AI AGENT</small></div></div>
+  <nav>
+    <button class="nav active" data-view="overview"><span>⌂</span> Overview</button>
+    <button class="nav" data-view="opportunities"><span>◈</span> Opportunities</button>
+    <button class="nav" data-view="applications"><span>↗</span> Applications</button>
+    <button class="nav" data-view="profile"><span>◎</span> Candidate</button>
+    <button class="nav" data-view="settings"><span>⚙</span> Agent settings</button>
+  </nav>
+  <div class="sidebar-foot"><div class="status-dot"></div><div><b>Agent online</b><small>Policy engine ready</small></div></div>
+</aside>
+<main class="main">
+<header class="topbar"><div><div class="crumb">CAREER OPERATING SYSTEM <span>/</span> <b id="viewTitle">Overview</b></div><h1 id="headline">Your career, on autopilot.</h1></div><div class="top-actions"><button class="icon-btn" id="refresh" title="Refresh">↻</button><button class="avatar">MD</button></div></header>
+<section class="hero-card">
+  <div class="hero-copy"><div class="live"><i></i> AUTONOMOUS MODE <b id="modeLabel">OFF</b></div><h2>Find the roles worth your time.<br><em>Let the agent do the work.</em></h2><p>Search the web, understand fit, tailor your story, submit permitted applications, track outcomes and improve from feedback.</p>
+  <div class="hero-actions"><button class="primary" id="runAgent">Run agent <span>→</span></button><button class="ghost" data-view-jump="opportunities">Explore opportunities</button></div></div>
+  <div class="orb"><div class="orb-core">AI</div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div></div>
+</section>
+<section class="metrics">
+ <div class="metric"><small>DISCOVERED</small><strong id="jobs">—</strong><span>roles in pipeline</span></div>
+ <div class="metric"><small>QUALIFIED</small><strong id="qualified">—</strong><span>above fit threshold</span></div>
+ <div class="metric"><small>SUBMITTED</small><strong id="submitted">—</strong><span>applications sent</span></div>
+ <div class="metric"><small>INTERVIEWS</small><strong id="interviews">—</strong><span>conversations started</span></div>
+</section>
+<section id="overview" class="view active-view">
+ <div class="section-title"><div><span class="kicker">INTELLIGENCE FEED</span><h3>Opportunity pipeline</h3></div><button class="text-btn" data-view-jump="opportunities">View all →</button></div>
+ <div class="pipeline" id="pipeline"></div>
+ <div class="lower-grid"><div class="panel"><div class="panel-head"><div><span class="kicker">AUTONOMY</span><h3>Submission control</h3></div><label class="switch"><input id="autoToggle" type="checkbox"><span></span></label></div><p class="muted">When enabled, the agent can submit qualifying routine applications within your configured policy. CAPTCHAs, 2FA, unknown required fields and legal attestations pause the workflow.</p><div class="policy-row"><span>Daily capacity</span><b id="capacity">—</b></div><div class="policy-row"><span>Minimum fit</span><b id="threshold">—</b></div></div>
+ <div class="panel"><div class="panel-head"><div><span class="kicker">ACTIVITY</span><h3>Agent state</h3></div><span class="badge green">READY</span></div><div class="activity"><div><i></i><span>Opportunity discovery</span><b>READY</b></div><div><i></i><span>Fit intelligence</span><b>READY</b></div><div><i></i><span>Application tailoring</span><b>READY</b></div><div><i></i><span>Submission worker</span><b>GUARDED</b></div></div></div></div>
+</section>
+<section id="opportunities" class="view"><div class="section-title"><div><span class="kicker">SEARCH + MATCH</span><h3>Opportunities</h3></div></div><div class="searchbar"><input id="q" placeholder="Search roles — e.g. AI Product Engineer, remote Nigeria"><button class="primary" id="searchBtn">Discover roles →</button></div><div class="filters"><button class="filter active">All roles</button><button class="filter">Remote</button><button class="filter">New grad</button><button class="filter">AI / ML</button></div><div class="pipeline full" id="jobsList"></div></section>
+<section id="applications" class="view"><div class="section-title"><div><span class="kicker">EXECUTION LOG</span><h3>Applications</h3></div></div><div class="app-table" id="appsList"></div></section>
+<section id="profile" class="view"><div class="section-title"><div><span class="kicker">SOURCE OF TRUTH</span><h3>Candidate profile</h3></div><button class="primary" id="saveProfile">Save profile</button></div><div class="form-grid" id="profileForm"></div></section>
+<section id="settings" class="view"><div class="section-title"><div><span class="kicker">POLICY ENGINE</span><h3>Agent settings</h3></div></div><div class="settings-grid"><div class="panel"><h3>Autonomous submission</h3><p class="muted">Your rules are applied before every submission. The agent never invents candidate facts and never bypasses anti-bot controls.</p><div class="policy-row"><span>Autonomous submission</span><b id="settingMode">OFF</b></div><div class="policy-row"><span>Daily limit</span><b id="settingLimit">—</b></div><div class="policy-row"><span>Minimum match</span><b id="settingScore">—</b></div><div class="policy-row"><span>Allowed domains</span><b>Allowlist</b></div></div><div class="panel"><h3>Deployment</h3><p class="muted">Designed for Vercel + PostgreSQL. Browser sessions remain external to serverless functions; live application submission requires an authenticated browser provider or permitted browser worker.</p><a class="docs" href="/api/docs" target="_blank">Open API docs ↗</a></div></div></section>
+<footer><span>JOBHUNT AI v2.0</span><span>Truthful automation · guarded execution · human control</span></footer>
+</main></div><div id="toast" class="toast"></div><script src="/static/app.js"></script>
+</body></html>
