@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +15,7 @@ from .services.ai import AIService
 from .services.browser import BrowserAutomation
 from .services.feedback import outcome_insight
 from .services.submission import SubmissionService, SubmissionBlocked
+from .services.resume_parser import extract_text, parse_resume
 
 BASE = Path(__file__).parent
 app = FastAPI(title="JobHunt AI", version="2.0.0", docs_url="/api/docs", redoc_url=None)
@@ -123,6 +124,29 @@ def profile(data:ProfileIn,s:Session=Depends(db)):
     for k,v in data.model_dump().items(): setattr(p,k,v)
     s.commit(); return {"ok":True}
 
+@app.post("/api/profile/import-resume")
+async def import_resume(file: UploadFile = File(...)):
+    filename = file.filename or "resume"
+    if not filename.lower().endswith((".pdf", ".docx")):
+        raise HTTPException(400, "Upload a PDF or DOCX resume.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "The uploaded resume is empty.")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(413, "Resume must be 8 MB or smaller.")
+    try:
+        text = extract_text(filename, data)
+        if len(text.strip()) < 80:
+            raise ValueError("Could not extract enough text from this resume. Try an editable PDF/DOCX.")
+        parsed = parse_resume(text, AIService())
+        parsed["filename"] = filename
+        parsed["characters"] = len(text)
+        return {"ok": True, "profile": parsed, "message": "Resume parsed successfully. Review the imported fields, then save your profile."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(422, f"Resume parsing failed: {e}")
+
 @app.post("/api/applications")
 def create_application(data:ApplicationIn,s:Session=Depends(db)):
     j=s.get(Job,data.job_id)
@@ -159,17 +183,23 @@ def agent_readiness(s: Session=Depends(db)):
 
 @app.post("/api/agent/run")
 async def agent_run(s: Session=Depends(db)):
-    """Run the career agent in safe mode when autonomous submission is disabled.
+    """Discover once, then continuously process the existing opportunity pool.
 
-    Safe mode discovers and qualifies roles and prepares application drafts; it
-    never submits applications unless AUTO_SUBMIT is explicitly enabled.
+    The first run fills the pipeline. Once 21+ roles exist, discovery is skipped
+    so an accidental second click does not create a new search batch.
     """
     from .config import settings
     profile = get_profile(s)
     query = f"{profile.headline or 'software engineer'} jobs careers {profile.preferences or 'junior graduate remote Nigeria'}"
+    existing_count = s.query(Job).count()
     discovered = 0
-    if settings.tavily_api_key:
-        results = await SearchService().search(query, 20)
+    skipped = 0
+
+    if existing_count >= 21:
+        skipped = existing_count
+    elif settings.tavily_api_key:
+        needed = max(21 - existing_count, 1)
+        results = await SearchService().search(query, min(20, needed))
         for r in results:
             url = r.get("url", "")
             if not url or s.query(Job).filter_by(url=url).first():
@@ -182,9 +212,11 @@ async def agent_run(s: Session=Depends(db)):
                     remote="remote" in (title + " " + desc).lower())
             s.add(j); discovered += 1
         s.commit()
+    else:
+        raise HTTPException(503, "Job discovery is not configured. Add TAVILY_API_KEY in Vercel environment variables.")
 
     text = " ".join([profile.skills or "", profile.projects or "", profile.experience or "", profile.education or "", profile.preferences or ""])
-    jobs = s.query(Job).order_by(Job.created_at.desc()).limit(50).all()
+    jobs = s.query(Job).order_by(Job.created_at.desc()).limit(100).all()
     qualified = 0
     drafts = 0
     for j in jobs:
@@ -199,11 +231,13 @@ async def agent_run(s: Session=Depends(db)):
                 s.add(Application(job_id=j.id, status="application_draft")); drafts += 1
     s.commit()
 
+    result = {"mode": "autonomous" if settings.auto_submit else "safe", "discovered": discovered, "qualified": qualified, "drafts": drafts, "prepared": drafts, "skipped": skipped, "total_roles": len(jobs)}
     if settings.auto_submit:
         execution = await automation_run(s)
-        return {"mode": "autonomous", "discovered": discovered, "qualified": qualified, "drafts": drafts, **execution}
-    return {"mode": "safe", "discovered": discovered, "qualified": qualified, "drafts": drafts,
-            "message": "Roles discovered, scored and prepared. Submission remains off until you explicitly enable AUTO_SUBMIT."}
+        result.update(execution)
+    else:
+        result["message"] = "Existing roles were reused when possible; roles were scored and application drafts prepared. Submission remains off."
+    return result
 
 
 @app.post("/api/automation/run")

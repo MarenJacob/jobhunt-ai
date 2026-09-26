@@ -18,6 +18,15 @@ class AIService:
         )
         return response.choices[0].message.content
 
+    def generate_json(self, prompt: str):
+        raw = self._chat("You extract structured facts from resumes. Return JSON only. Never invent missing information.", prompt)
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
     def tailor(self, profile: dict, job: dict):
         prompt = f"""Candidate profile:\n{json.dumps(profile, ensure_ascii=False)}\n\nJob:\n{json.dumps(job, ensure_ascii=False)}\n\nReturn JSON with keys cover_letter, cv_summary, evidence_points, screening_questions. Never invent qualifications or experience. Keep cover_letter concise."""
         raw = self._chat("You are a truthful career application assistant. Optimize relevance, never fabricate.", prompt)
