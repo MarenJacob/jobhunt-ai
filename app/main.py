@@ -42,7 +42,9 @@ def home(request: Request, s: Session=Depends(db)):
     return templates.TemplateResponse(request=request, name="index.html", context=context)
 
 @app.get("/api/health")
-def health(): return {"status":"ok","service":"JobHunt AI","version":"1.0.0"}
+def health():
+    from .config import settings
+    return {"status":"ok","service":"JobHunt AI","version":"2.1.0","search_configured":bool(settings.tavily_api_key),"ai_configured":bool(settings.openai_api_key),"database":"postgresql" if settings.database_url.startswith("postgres") else "sqlite"}
 
 @app.get("/api/dashboard")
 def dashboard(s: Session=Depends(db)):
@@ -53,7 +55,7 @@ def dashboard(s: Session=Depends(db)):
     return {"jobs":len(jobs),"qualified":sum(j.match_score>=60 for j in jobs),"applications":len(apps),"interviews":sum(a.status=="interview" for a in apps),"submitted":submitted,"pending":pending,"blocked":blocked,"feedback":outcome_insight(fb)}
 
 @app.get("/api/jobs")
-def jobs(s: Session=Depends(db)): return [{"id":j.id,"title":j.title,"company":j.company,"location":j.location,"url":j.url,"source":j.source,"score":j.match_score,"status":j.status} for j in s.query(Job).order_by(Job.match_score.desc()).all()]
+def jobs(s: Session=Depends(db)): return [{"id":j.id,"title":j.title,"company":j.company,"location":j.location,"url":j.url,"source":j.source,"score":j.match_score,"status":j.status,"remote":j.remote,"description":j.description or ""} for j in s.query(Job).order_by(Job.match_score.desc()).all()]
 
 @app.post("/api/jobs")
 def add_job(data: JobIn, s: Session=Depends(db)):
@@ -142,6 +144,19 @@ def approve(application_id:int,s:Session=Depends(db)):
     if not a: raise HTTPException(404,"Application not found")
     a.approved=True; a.status="approved_for_submission"; s.commit(); return {"approved":True,"next_step":"Use the browser workflow or submit manually after review."}
 
+@app.get("/api/agent/readiness")
+def agent_readiness(s: Session=Depends(db)):
+    from .config import settings
+    p=get_profile(s)
+    checks={
+        "profile": bool((p.name or '').strip() and (p.email or '').strip()),
+        "search": bool(settings.tavily_api_key),
+        "ai": bool(settings.openai_api_key),
+        "database": True,
+        "submission": bool(settings.auto_submit),
+    }
+    return {"ready": checks["profile"] and checks["search"], "checks":checks, "mode":"autonomous" if settings.auto_submit else "safe", "message":"Ready to discover and qualify jobs." if checks["profile"] and checks["search"] else "Complete your candidate profile and add TAVILY_API_KEY before running the agent."}
+
 @app.post("/api/agent/run")
 async def agent_run(s: Session=Depends(db)):
     """Run the career agent in safe mode when autonomous submission is disabled.
@@ -151,7 +166,7 @@ async def agent_run(s: Session=Depends(db)):
     """
     from .config import settings
     profile = get_profile(s)
-    query = f"{profile.headline or 'software engineer'} {profile.preferences or 'junior graduate remote Nigeria'}"
+    query = f"{profile.headline or 'software engineer'} jobs careers {profile.preferences or 'junior graduate remote Nigeria'}"
     discovered = 0
     if settings.tavily_api_key:
         results = await SearchService().search(query, 20)
