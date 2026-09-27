@@ -24,3 +24,18 @@ class Base(DeclarativeBase):
 def init_db():
     from . import models
     Base.metadata.create_all(bind=engine)
+    migrate_additive()
+
+
+def migrate_additive():
+    """Small additive migration for existing deployments; never drops data."""
+    from sqlalchemy import inspect, text
+    inspector=inspect(engine)
+    tables=set(inspector.get_table_names())
+    if "profile" in tables:
+        cols={x["name"] for x in inspector.get_columns("profile")}
+        additions={"phone":"VARCHAR(80) NOT NULL DEFAULT ''","address":"VARCHAR(500) NOT NULL DEFAULT ''","linkedin":"VARCHAR(500) NOT NULL DEFAULT ''","github":"VARCHAR(500) NOT NULL DEFAULT ''","website":"VARCHAR(500) NOT NULL DEFAULT ''","work_authorization":"VARCHAR(300) NOT NULL DEFAULT ''","sponsorship":"VARCHAR(300) NOT NULL DEFAULT ''","salary":"VARCHAR(200) NOT NULL DEFAULT ''","resume_filename":"VARCHAR(300) NOT NULL DEFAULT ''","resume_blob":"BYTEA" if database_url.startswith("postgres") else "BLOB"}
+        with engine.begin() as conn:
+            for name,typ in additions.items():
+                if name not in cols:
+                    conn.execute(text(f"ALTER TABLE profile ADD COLUMN {name} {typ}"))

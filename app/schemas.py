@@ -20,6 +20,14 @@ class ProfileIn(BaseModel):
     experience: str = ""
     education: str = ""
     preferences: str = ""
+    phone: str = ""
+    address: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
+    work_authorization: str = ""
+    sponsorship: str = ""
+    salary: str = ""
 
 class ApplicationIn(BaseModel):
     job_id: int

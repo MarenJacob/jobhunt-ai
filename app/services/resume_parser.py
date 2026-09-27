@@ -1,80 +1,44 @@
-import json
-import re
-from typing import Dict
+import io, json, re
+from pypdf import PdfReader
+from docx import Document
 
+def extract_text(filename,data):
+    low=filename.lower()
+    if low.endswith('.pdf'):
+        reader=PdfReader(io.BytesIO(data)); return '\n'.join((p.extract_text() or '') for p in reader.pages)
+    if low.endswith('.docx'):
+        doc=Document(io.BytesIO(data)); return '\n'.join(p.text for p in doc.paragraphs)+ '\n' + '\n'.join(' | '.join(c.text for c in row.cells) for t in doc.tables for row in t.rows)
+    raise ValueError('Unsupported resume format')
 
-def _pdf_text(data: bytes) -> str:
-    from pypdf import PdfReader
-    import io
-    reader = PdfReader(io.BytesIO(data))
-    return "\n".join((p.extract_text() or "") for p in reader.pages)
+def _section(text,names):
+    lines=text.splitlines(); start=None; end=len(lines)
+    pats=[re.compile(r'^\s*(?:'+ '|'.join(re.escape(x) for x in names)+r')\s*$',re.I)]
+    for i,l in enumerate(lines):
+        if any(p.match(l.strip()) for p in pats): start=i+1; break
+    if start is None:return ''
+    headings={'professional summary','summary','profile','professional experience','experience','work experience','employment','education','projects','selected projects','technical skills','skills','core competencies','certifications','training'}
+    for i in range(start,len(lines)):
+        if lines[i].strip().lower() in headings and i>start: end=i; break
+    return '\n'.join(lines[start:end]).strip()
 
-
-def _docx_text(data: bytes) -> str:
-    from docx import Document
-    import io
-    doc = Document(io.BytesIO(data))
-    parts = [p.text for p in doc.paragraphs if p.text.strip()]
-    for table in doc.tables:
-        for row in table.rows:
-            parts.append(" | ".join(cell.text.strip() for cell in row.cells))
-    return "\n".join(parts)
-
-
-def extract_text(filename: str, data: bytes) -> str:
-    name = (filename or "").lower()
-    if name.endswith(".pdf"):
-        return _pdf_text(data)
-    if name.endswith(".docx"):
-        return _docx_text(data)
-    raise ValueError("Only PDF and DOCX resumes are supported.")
-
-
-def _section(text: str, *names: str) -> str:
-    pattern = r"(?is)(?:^|\n)\s*(?:" + "|".join(re.escape(n) for n in names) + r")\s*[:\-]?\s*\n?(.*?)(?=\n\s*(?:professional profile|professional summary|core competencies|core skills|technical skills|skills|experience|professional experience|work experience|projects|selected projects|education|education & training|training|certifications|preferences|location)\s*[:\-]?\s*\n|\Z)"
-    m = re.search(pattern, text)
-    return m.group(1).strip() if m else ""
-
-
-def _fallback(text: str) -> Dict[str, str]:
-    lines = [x.strip(" •\t") for x in text.splitlines() if x.strip()]
-    first = next((x for x in lines[:12] if re.fullmatch(r"[A-Za-z][A-Za-z .'-]{3,}", x) and len(x.split()) >= 2), "")
-    email = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
-    phone = re.search(r"(?:\+?\d[\d ()-]{8,}\d)", text)
-    headline = next((x for x in lines[1:10] if "|" in x or "AI" in x or "Developer" in x or "Engineer" in x), "")
-    skills = _section(text, "TECHNICAL SKILLS", "SKILLS", "CORE COMPETENCIES", "CORE SKILLS")
-    experience = _section(text, "PROFESSIONAL EXPERIENCE", "EXPERIENCE", "WORK EXPERIENCE")
-    projects = _section(text, "SELECTED PROJECTS", "PROJECTS")
-    education = _section(text, "EDUCATION", "EDUCATION & TRAINING")
-    profile = _section(text, "PROFESSIONAL PROFILE", "PROFESSIONAL SUMMARY", "SUMMARY")
-    if not profile:
-        profile = experience[:900]
-    return {
-        "name": first,
-        "headline": headline,
-        "email": email.group(0) if email else "",
-        "location": "Nigeria" if "Nigeria" in text else "",
-        "skills": skills,
-        "projects": projects,
-        "experience": experience,
-        "education": education,
-        "preferences": "junior, graduate, new grad, remote, Nigeria",
-        "summary": profile,
-        "phone": phone.group(0) if phone else "",
-    }
-
-
-def parse_resume(text: str, ai_service=None) -> Dict[str, str]:
-    fallback = _fallback(text)
-    if not ai_service:
-        return fallback
-    prompt = """Extract truthful candidate profile fields from this resume. Return ONLY valid JSON with these keys: name, headline, email, location, skills, projects, experience, education, preferences, summary, phone. Preserve facts and wording where useful. Never invent missing facts. Use concise plain text.\n\nRESUME:\n""" + text[:30000]
-    try:
-        raw = ai_service.generate_json(prompt)
-        if isinstance(raw, dict):
-            for k, v in fallback.items():
-                if not str(raw.get(k) or "").strip(): raw[k] = v
-            return {k: str(raw.get(k) or "") for k in fallback}
-    except Exception:
-        pass
-    return fallback
+def parse_resume(text,ai=None):
+    clean=re.sub(r'\r','',text); lines=[x.strip() for x in clean.splitlines() if x.strip()]
+    top='\n'.join(lines[:25])
+    email=(re.search(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}',clean) or ["",""])[0]
+    phone=(re.search(r'(?:\+?\d[\d ()-]{7,}\d)',clean) or ["",""])[0].strip()
+    name=lines[0] if lines else ''
+    # Prefer a likely all-name line before a title/summary line.
+    for line in lines[:10]:
+        if '@' in line or 'linkedin' in line.lower() or 'github' in line.lower(): continue
+        words=line.split()
+        if 2<=len(words)<=5 and not any(k in line.lower() for k in ['engineer','developer','specialist','resume','curriculum','ai ']): name=line; break
+    profile={'name':name,'headline':'','email':email,'phone':phone,'location':'','skills':_section(clean,['technical skills','skills','core competencies']),'projects':_section(clean,['selected projects','selected ai & software projects','projects']),'experience':_section(clean,['professional experience','experience','work experience']),'education':_section(clean,['education','education & training']),'preferences':'','address':'','linkedin':'','github':'','website':''}
+    m=re.search(r'(https?://(?:www\.)?linkedin\.com/[^\s|]+|linkedin\.com/[^\s|]+)',clean,re.I); profile['linkedin']=m.group(1) if m else ''
+    m=re.search(r'(https?://(?:www\.)?github\.com/[^\s|]+|github\.com/[^\s|]+)',clean,re.I); profile['github']=m.group(1) if m else ''
+    # AI enhancement is optional; deterministic extraction remains the fallback.
+    if ai:
+        try:
+            raw=ai.generate_json('Parse this resume into JSON keys: name, headline, email, phone, location, address, linkedin, github, website, skills, projects, experience, education, preferences. Never invent data. Resume:\n'+clean[:24000])
+            if isinstance(raw,dict): profile.update({k:v for k,v in raw.items() if k in profile and v})
+        except Exception: pass
+    return profile

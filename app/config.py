@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     allowed_domains: str = "greenhouse.io,lever.co,ashbyhq.com,smartrecruiters.com,wellfound.com,weworkremotely.com,linkedin.com,indeed.com"
     browser_profile_dir: str = "storage/browser-profile"
     browser_headless: bool = True
+    browser_worker_url: str = ""
+    browser_worker_secret: str = ""
+    browser_worker_timeout: int = 120
+    browser_session_name: str = "default"
     resume_path: str = ""
     follow_up_days: int = 7
     smtp_host: str = ""

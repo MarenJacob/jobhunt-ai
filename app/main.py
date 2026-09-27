@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from .db import SessionLocal, init_db
-from .models import Job, Application, Feedback, Profile, ATSRun, TailoringRun, TelemetryReport, InterviewSession, NegotiationRun
+from .models import Job, Application, Feedback, Profile, ATSRun, TailoringRun, TelemetryReport, InterviewSession, NegotiationRun, BrowserRun
 from .schemas import JobIn, ProfileIn, ApplicationIn, FeedbackIn, SearchIn
 from .services.matcher import match_job
 from .services.search import SearchService
@@ -51,7 +51,7 @@ def home(request: Request, s: Session=Depends(db)):
 @app.get("/api/health")
 def health():
     from .config import settings
-    return {"status":"ok","service":"JobHunt AI","version":"2.1.0","search_configured":bool(settings.tavily_api_key),"ai_configured":bool(settings.openai_api_key),"database":"postgresql" if settings.database_url.startswith("postgres") else "sqlite"}
+    return {"status":"ok","service":"JobHunt AI","version":"3.0.0","search_configured":bool(settings.tavily_api_key),"ai_configured":bool(settings.openai_api_key),"database":"postgresql" if settings.database_url.startswith("postgres") else "sqlite"}
 
 @app.get("/api/dashboard")
 def dashboard(s: Session=Depends(db)):
@@ -104,7 +104,7 @@ def applications(s: Session=Depends(db)):
 @app.get("/api/profile")
 def profile_get(s: Session=Depends(db)):
     p=get_profile(s)
-    return {c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    return {c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
 
 @app.get("/api/automation/status")
 def automation_status(s: Session=Depends(db)):
@@ -146,8 +146,21 @@ async def import_resume(file: UploadFile = File(...)):
             raise ValueError("Could not extract enough text from this resume. Try an editable PDF/DOCX.")
         parsed = parse_resume(text, AIService())
         parsed["filename"] = filename
+        # Persist the source resume so the browser worker can attach it later.
+        # Parsed profile fields remain reviewable in the UI before final save.
+        s = SessionLocal()
+        try:
+            p = get_profile(s)
+            p.resume_filename = filename
+            p.resume_blob = data
+            for k in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website"]:
+                if parsed.get(k): setattr(p,k,parsed[k])
+            s.commit()
+        finally:
+            s.close()
         parsed["characters"] = len(text)
-        return {"ok": True, "profile": parsed, "message": "Resume parsed successfully. Review the imported fields, then save your profile."}
+        parsed["resume_blob"] = data
+        return {"ok": True, "profile": {k:v for k,v in parsed.items() if k != "resume_blob"}, "message": "Resume parsed successfully. Review the imported fields, then save your profile. The resume is retained for ATS uploads after you save."}
     except HTTPException:
         raise
     except Exception as e:
@@ -164,7 +177,7 @@ def tailor(application_id:int,s:Session=Depends(db)):
     a=s.get(Application,application_id)
     if not a: raise HTTPException(404,"Application not found")
     j=s.get(Job,a.job_id); p=get_profile(s)
-    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
     job={"title":j.title,"company":j.company,"location":j.location,"description":j.description,"url":j.url}
     out=AIService().tailor(profile,job); a.cover_letter=out.get("cover_letter",""); a.tailored_cv=out.get("cv_summary",""); a.answers=json.dumps(out.get("screening_questions",[])); s.commit(); return out
 
@@ -184,6 +197,7 @@ def agent_readiness(s: Session=Depends(db)):
         "ai": bool(settings.openai_api_key),
         "database": True,
         "submission": bool(settings.auto_submit),
+        "browser_worker": bool(settings.browser_worker_url),
     }
     return {"ready": checks["profile"] and checks["search"], "checks":checks, "mode":"autonomous" if settings.auto_submit else "safe", "message":"Ready to discover and qualify jobs." if checks["profile"] and checks["search"] else "Complete your candidate profile and add TAVILY_API_KEY before running the agent."}
 
@@ -255,7 +269,7 @@ async def automation_run(s:Session=Depends(db)):
     submitted_today=s.query(Application).filter(Application.submitted_at!=None, Application.submitted_at>=datetime.combine(today, datetime.min.time())).count()
     budget=max(0, settings.max_applications_per_day-submitted_today)
     jobs=s.query(Job).filter(Job.match_score>=settings.minimum_match_score, Job.status.in_(["qualified","application_draft"])).order_by(Job.match_score.desc()).limit(budget).all()
-    p=get_profile(s); profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    p=get_profile(s); profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
     results=[]
     for j in jobs:
         a=s.query(Application).filter_by(job_id=j.id).first()
@@ -290,7 +304,7 @@ async def submit_application(application_id:int, dry_run: bool=False, s:Session=
         raise HTTPException(400,"Tailor the application before autonomous submission")
     if not __import__("app.config", fromlist=["settings"]).settings.auto_submit and not dry_run:
         raise HTTPException(403,"AUTO_SUBMIT is disabled. Enable it in .env after reviewing your policy.")
-    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
     try:
         out=await SubmissionService(s).submit_application(a,j,profile,dry_run=dry_run)
         s.commit()
@@ -306,8 +320,14 @@ async def submit_application(application_id:int, dry_run: bool=False, s:Session=
 async def inspect(application_id:int,s:Session=Depends(db)):
     a=s.get(Application,application_id); j=s.get(Job,a.job_id) if a else None
     if not j: raise HTTPException(404,"Application not found")
-    try: return await BrowserAutomation().inspect_apply_page(j.url)
-    except Exception as e: raise HTTPException(400,str(e))
+    try:
+        out=await BrowserAutomation().inspect_apply_page(j.url)
+        run=BrowserRun(application_id=a.id, platform=__import__("app.services.ats",fromlist=["detect_platform"]).detect_platform(j.url), action="inspect", status="ready" if out.get("ready_for_submission") else "needs_human", details=json.dumps(out))
+        s.add(run); s.commit()
+        return out
+    except Exception as e:
+        run=BrowserRun(application_id=a.id, platform=__import__("app.services.ats",fromlist=["detect_platform"]).detect_platform(j.url), action="inspect", status="error", details=json.dumps({"error":str(e)}))
+        s.add(run); s.commit(); raise HTTPException(400,str(e))
 
 @app.post("/api/interviews/generate")
 def interview(job_id:int,s:Session=Depends(db)):
@@ -323,7 +343,7 @@ def ats_map(application_id:int, fields: list[dict], s:Session=Depends(db)):
     if not a: raise HTTPException(404,"Application not found")
     j=s.get(Job,a.job_id)
     p=get_profile(s)
-    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
     platform=detect_platform(j.url)
     mapping=map_profile(profile,fields)
     unresolved=[f.get('label') or f.get('name') for f in fields if f.get('required') and not mapping.get(f.get('name') or f.get('id') or f.get('label'))]
@@ -335,6 +355,37 @@ def ats_map(application_id:int, fields: list[dict], s:Session=Depends(db)):
 def ats_status(application_id:int,s:Session=Depends(db)):
     rows=s.query(ATSRun).filter_by(application_id=application_id).order_by(ATSRun.created_at.desc()).all()
     return [{'id':r.id,'platform':r.platform,'mapping':json.loads(r.field_map or '{}'),'unresolved':json.loads(r.unresolved or '[]'),'status':r.status} for r in rows]
+
+@app.post("/api/applications/{application_id}/browser/inspect")
+async def browser_inspect(application_id:int,s:Session=Depends(db)):
+    return await inspect(application_id,s)
+
+@app.get("/api/applications/{application_id}/browser/runs")
+def browser_runs(application_id:int,s:Session=Depends(db)):
+    rows=s.query(BrowserRun).filter_by(application_id=application_id).order_by(BrowserRun.created_at.desc()).limit(20).all()
+    return [{"id":r.id,"platform":r.platform,"action":r.action,"status":r.status,"mapping":json.loads(r.mapping or "{}"),"unresolved":json.loads(r.unresolved or "[]"),"details":json.loads(r.details or "{}"),"created_at":r.created_at.isoformat()} for r in rows]
+
+@app.post("/api/applications/{application_id}/browser/execute")
+async def browser_execute(application_id:int,dry_run:bool=False,s:Session=Depends(db)):
+    from .config import settings
+    a=s.get(Application,application_id)
+    if not a: raise HTTPException(404,"Application not found")
+    j=s.get(Job,a.job_id)
+    if not j: raise HTTPException(404,"Job not found")
+    p=get_profile(s)
+    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
+    if not dry_run and not settings.auto_submit: raise HTTPException(403,"AUTO_SUBMIT is disabled")
+    try:
+        out=await BrowserAutomation().submit(j.url,profile,settings.resume_path,p.resume_blob,p.resume_filename,a.cover_letter,dry_run=dry_run)
+        status="submitted" if out.get("submitted") else "dry_run"
+        run=BrowserRun(application_id=a.id,platform=detect_platform(j.url),action="submit",status=status,details=json.dumps(out))
+        s.add(run); s.commit()
+        if out.get("submitted"):
+            a.status="submitted"; a.submitted_at=datetime.utcnow(); a.follow_up_at=datetime.utcnow()+timedelta(days=settings.follow_up_days); s.commit()
+        return out
+    except SubmissionBlocked as e:
+        run=BrowserRun(application_id=a.id,platform=detect_platform(j.url),action="submit",status="needs_human",details=json.dumps({"error":str(e)})); s.add(run); s.commit()
+        a.status="needs_human"; a.notes=str(e); s.commit(); raise HTTPException(409,str(e))
 
 @app.post("/api/applications/{application_id}/tailor/analyze")
 def tailor_analyze(application_id:int,s:Session=Depends(db)):

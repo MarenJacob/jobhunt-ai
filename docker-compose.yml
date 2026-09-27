@@ -1,8 +1,15 @@
 services:
   jobhunt:
     build: .
-    ports:
-      - "8000:8000"
+    ports: ["8000:8000"]
     env_file: .env
+    volumes: ["./storage:/app/storage"]
+  browser-worker:
+    build: ./worker
+    ports: ["8090:8090"]
+    environment:
+      BROWSER_WORKER_SECRET: ${BROWSER_WORKER_SECRET:-change-browser-secret}
+      BROWSER_HEADLESS: ${BROWSER_HEADLESS:-true}
+      ALLOWED_DOMAINS: ${ALLOWED_DOMAINS:-greenhouse.io,lever.co,ashbyhq.com,smartrecruiters.com,workday.com,myworkdayjobs.com}
     volumes:
-      - ./storage:/app/storage
+      - ./storage/browser-profile:/data/browser-profile

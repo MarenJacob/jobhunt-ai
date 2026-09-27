@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Float, Boolean, DateTime
+from sqlalchemy import String, Text, Integer, Float, Boolean, DateTime, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -52,6 +52,16 @@ class Profile(Base):
     experience: Mapped[str] = mapped_column(Text, default="")
     education: Mapped[str] = mapped_column(Text, default="")
     preferences: Mapped[str] = mapped_column(Text, default="")
+    phone: Mapped[str] = mapped_column(String(80), default="")
+    address: Mapped[str] = mapped_column(String(500), default="")
+    linkedin: Mapped[str] = mapped_column(String(500), default="")
+    github: Mapped[str] = mapped_column(String(500), default="")
+    website: Mapped[str] = mapped_column(String(500), default="")
+    work_authorization: Mapped[str] = mapped_column(String(300), default="")
+    sponsorship: Mapped[str] = mapped_column(String(300), default="")
+    salary: Mapped[str] = mapped_column(String(200), default="")
+    resume_filename: Mapped[str] = mapped_column(String(300), default="")
+    resume_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 class ATSRun(Base):
     __tablename__ = "ats_runs"
@@ -93,4 +103,16 @@ class NegotiationRun(Base):
     application_id: Mapped[int] = mapped_column(Integer)
     analysis: Mapped[str] = mapped_column(Text, default="{}")
     script: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class BrowserRun(Base):
+    __tablename__ = "browser_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(Integer)
+    platform: Mapped[str] = mapped_column(String(50), default="generic")
+    action: Mapped[str] = mapped_column(String(50), default="inspect")
+    status: Mapped[str] = mapped_column(String(50), default="started")
+    mapping: Mapped[str] = mapped_column(Text, default="{}")
+    unresolved: Mapped[str] = mapped_column(Text, default="[]")
+    details: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
