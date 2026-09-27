@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from .db import SessionLocal, init_db
-from .models import Job, Application, Feedback, Profile
+from .models import Job, Application, Feedback, Profile, ATSRun, TailoringRun, TelemetryReport, InterviewSession, NegotiationRun
 from .schemas import JobIn, ProfileIn, ApplicationIn, FeedbackIn, SearchIn
 from .services.matcher import match_job
 from .services.search import SearchService
@@ -16,6 +16,12 @@ from .services.browser import BrowserAutomation
 from .services.feedback import outcome_insight
 from .services.submission import SubmissionService, SubmissionBlocked
 from .services.resume_parser import extract_text, parse_resume
+from .services.ats import detect_platform, map_profile, analyze_fields
+from .services.tailoring import keyword_alignment, align_bullets
+from .services.telemetry import company_telemetry
+from .services.interview import build_mock
+from .services.negotiation import model_offer, counter_script
+from .services.candidate_protocol import issue_token
 
 BASE = Path(__file__).parent
 app = FastAPI(title="JobHunt AI", version="2.0.0", docs_url="/api/docs", redoc_url=None)
@@ -309,6 +315,97 @@ def interview(job_id:int,s:Session=Depends(db)):
     if not j: raise HTTPException(404,"Job not found")
     profile={c:getattr(p,c) for c in ["name","headline","skills","projects","experience","education"]}
     return json.loads(AIService().interview(profile,{"title":j.title,"company":j.company,"description":j.description}))
+
+
+@app.post("/api/applications/{application_id}/ats-map")
+def ats_map(application_id:int, fields: list[dict], s:Session=Depends(db)):
+    a=s.get(Application,application_id)
+    if not a: raise HTTPException(404,"Application not found")
+    j=s.get(Job,a.job_id)
+    p=get_profile(s)
+    profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences"]}
+    platform=detect_platform(j.url)
+    mapping=map_profile(profile,fields)
+    unresolved=[f.get('label') or f.get('name') for f in fields if f.get('required') and not mapping.get(f.get('name') or f.get('id') or f.get('label'))]
+    run=ATSRun(application_id=a.id,platform=platform,field_map=json.dumps(mapping),unresolved=json.dumps(unresolved),status='needs_human' if unresolved else 'mapped')
+    s.add(run); s.commit()
+    return {'platform':platform,'mapping':mapping,'unresolved':unresolved,'status':run.status}
+
+@app.get("/api/applications/{application_id}/ats")
+def ats_status(application_id:int,s:Session=Depends(db)):
+    rows=s.query(ATSRun).filter_by(application_id=application_id).order_by(ATSRun.created_at.desc()).all()
+    return [{'id':r.id,'platform':r.platform,'mapping':json.loads(r.field_map or '{}'),'unresolved':json.loads(r.unresolved or '[]'),'status':r.status} for r in rows]
+
+@app.post("/api/applications/{application_id}/tailor/analyze")
+def tailor_analyze(application_id:int,s:Session=Depends(db)):
+    a=s.get(Application,application_id)
+    if not a: raise HTTPException(404,"Application not found")
+    j=s.get(Job,a.job_id); p=get_profile(s)
+    resume=' '.join([p.headline,p.skills,p.projects,p.experience,p.education])
+    alignment=keyword_alignment(resume,j.description or j.title)
+    bullets=[]
+    for section in (p.experience or '').split('\n'):
+        line=section.strip(' •-')
+        if line: bullets.append(line)
+    bullet_result=align_bullets(bullets[:40],j.description or j.title)
+    run=TailoringRun(application_id=a.id,ats_score=alignment['score'],matched_keywords=json.dumps(alignment['matched']),missing_keywords=json.dumps(alignment['missing']),bullet_alignment=json.dumps(bullet_result))
+    s.add(run); s.commit()
+    return {'ats_score':alignment['score'],'matched_keywords':alignment['matched'],'missing_keywords':alignment['missing'],'bullet_alignment':bullet_result}
+
+@app.get("/api/applications/{application_id}/tailoring")
+def tailoring_history(application_id:int,s:Session=Depends(db)):
+    rows=s.query(TailoringRun).filter_by(application_id=application_id).order_by(TailoringRun.created_at.desc()).all()
+    return [{'id':r.id,'ats_score':r.ats_score,'matched_keywords':json.loads(r.matched_keywords),'missing_keywords':json.loads(r.missing_keywords),'bullet_alignment':json.loads(r.bullet_alignment)} for r in rows]
+
+@app.post("/api/companies/{company}/telemetry")
+def telemetry(company:str,s:Session=Depends(db)):
+    jobs=[{'company':j.company,'title':j.title,'location':j.location} for j in s.query(Job).all()]
+    apps=[]
+    for a in s.query(Application).all():
+        j=s.get(Job,a.job_id); apps.append({'company':j.company if j else '','status':a.status})
+    report=company_telemetry(company,jobs,apps)
+    s.add(TelemetryReport(company=company,report=json.dumps(report))); s.commit()
+    return report
+
+@app.post("/api/interviews/mock")
+def mock_interview(job_id:int,s:Session=Depends(db)):
+    j=s.get(Job,job_id)
+    if not j: raise HTTPException(404,"Job not found")
+    p=get_profile(s); profile={c:getattr(p,c) for c in ['skills','projects','experience','education']}
+    session=build_mock({'title':j.title,'company':j.company,'description':j.description},profile)
+    row=InterviewSession(job_id=job_id,session=json.dumps(session)); s.add(row); s.commit(); s.refresh(row)
+    return {'id':row.id,**session}
+
+@app.get("/api/interviews/{session_id}")
+def get_interview(session_id:int,s:Session=Depends(db)):
+    row=s.get(InterviewSession,session_id)
+    if not row: raise HTTPException(404,"Interview session not found")
+    return json.loads(row.session)
+
+@app.post("/api/applications/{application_id}/negotiation")
+def negotiation(application_id:int, payload:dict,s:Session=Depends(db)):
+    a=s.get(Application,application_id)
+    if not a: raise HTTPException(404,"Application not found")
+    j=s.get(Job,a.job_id)
+    analysis=model_offer(payload.get('offer'),payload.get('market_low'),payload.get('market_high'))
+    script=counter_script(j.title,j.company,analysis['counter_reference'])
+    row=NegotiationRun(application_id=application_id,analysis=json.dumps(analysis),script=script); s.add(row); s.commit()
+    return {'analysis':analysis,'script':script}
+
+@app.post("/api/candidate/token")
+def candidate_token(s:Session=Depends(db)):
+    from .config import settings
+    p=get_profile(s)
+    profile={c:getattr(p,c) for c in ['name','headline','email','location','skills','projects','experience','education']}
+    return issue_token(profile,settings.secret_key)
+
+@app.post("/api/candidate/token/verify")
+def candidate_token_verify(payload:dict):
+    from .config import settings
+    from .services.candidate_protocol import verify_token
+    result=verify_token(payload.get('token',''),settings.secret_key)
+    if not result: raise HTTPException(401,'Invalid or expired candidate token')
+    return result
 
 @app.post("/api/feedback")
 def feedback(data:FeedbackIn,s:Session=Depends(db)):

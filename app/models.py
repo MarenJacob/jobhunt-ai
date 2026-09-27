@@ -52,3 +52,45 @@ class Profile(Base):
     experience: Mapped[str] = mapped_column(Text, default="")
     education: Mapped[str] = mapped_column(Text, default="")
     preferences: Mapped[str] = mapped_column(Text, default="")
+
+class ATSRun(Base):
+    __tablename__ = "ats_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(Integer)
+    platform: Mapped[str] = mapped_column(String(50), default="generic")
+    field_map: Mapped[str] = mapped_column(Text, default="{}")
+    unresolved: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(50), default="mapped")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class TailoringRun(Base):
+    __tablename__ = "tailoring_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(Integer)
+    ats_score: Mapped[float] = mapped_column(Float, default=0)
+    matched_keywords: Mapped[str] = mapped_column(Text, default="[]")
+    missing_keywords: Mapped[str] = mapped_column(Text, default="[]")
+    bullet_alignment: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class TelemetryReport(Base):
+    __tablename__ = "telemetry_reports"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company: Mapped[str] = mapped_column(String(300))
+    report: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class InterviewSession(Base):
+    __tablename__ = "interview_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(Integer)
+    session: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class NegotiationRun(Base):
+    __tablename__ = "negotiation_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(Integer)
+    analysis: Mapped[str] = mapped_column(Text, default="{}")
+    script: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
