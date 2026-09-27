@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
@@ -28,10 +29,30 @@ app = FastAPI(title="JobHunt AI", version="2.0.0", docs_url="/api/docs", redoc_u
 app.mount("/static", StaticFiles(directory=BASE/"static"), name="static")
 templates = Jinja2Templates(directory=str(BASE/"templates"))
 
+_db_ready = False
+_db_lock = threading.Lock()
+
+def ensure_db():
+    """Initialize/migrate the database on first request as well as startup.
+
+    Some serverless ASGI adapters do not guarantee FastAPI lifespan/startup
+    execution before the first invocation. Keeping initialization here makes
+    the application safe on Vercel cold starts without relying on lifespan.
+    """
+    global _db_ready
+    if _db_ready:
+        return
+    with _db_lock:
+        if not _db_ready:
+            init_db()
+            _db_ready = True
+
 @app.on_event("startup")
-def startup(): init_db()
+def startup():
+    ensure_db()
 
 def db():
+    ensure_db()
     s=SessionLocal()
     try: yield s
     finally: s.close()
