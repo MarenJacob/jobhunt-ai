@@ -26,43 +26,64 @@ function nav(view){
   currentView=view;
   $$('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
   $$('.view').forEach(x=>x.classList.toggle('active-view',x.id===view));
-  const names={overview:'Overview',opportunities:'Opportunities',applications:'Applications',profile:'Candidate',intelligence:'Intelligence',interview:'Interview Lab',offer:'Offer Lab',settings:'Agent settings'};
-  const heads={overview:'Your career, orchestrated.',opportunities:'Search the entire opportunity surface.',applications:'Every application, accounted for.',profile:'Your professional source of truth.',intelligence:'Understand every application before it moves.',interview:'Train against the role, not generic questions.',offer:'Model the offer before you respond.',settings:'Control how the agent operates.'};
+  const names={overview:'Home',opportunities:'Jobs',applications:'Applications',profile:'My profile',intelligence:'Apply tools',interview:'Interview prep',offer:'Offers',settings:'Settings'};
+  const heads={overview:'Your job search, on autopilot.',opportunities:'Find and score roles.',applications:'Every application in one place.',profile:'Your details, your source of truth.',intelligence:'Get each application ready.',interview:'Practice for the actual role.',offer:'Plan your counter-offer.',settings:'Control how the agent works.'};
   setText('#viewTitle',names[view]||'Overview'); setText('#headline',heads[view]||heads.overview);
-  $('.sidebar')?.classList.remove('open'); document.body.classList.remove('sidebar-open');
+  $('.sidebar')?.classList.remove('open'); document.body.classList.remove('sidebar-open'); window.scrollTo({top:0});
   if(view==='opportunities') loadJobs().catch(e=>toast(`Could not load opportunities: ${e.message}`,'error'));
   if(view==='applications') loadApps().catch(e=>toast(`Could not load applications: ${e.message}`,'error'));
   if(view==='profile') loadProfile().catch(e=>toast(`Could not load profile: ${e.message}`,'error'));
 }
 $$('.nav').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.view)));
-$$('[data-view-jump]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.viewJump)));
 
 async function loadDashboard(){
   const [d,st]=await Promise.all([api('/api/dashboard'),api('/api/automation/status')]);
   ['jobs','qualified','applications','interviews','submitted'].forEach(k=>setText('#'+k,d[k]??0));
   setText('#capacity',`${st.submitted_today} / ${st.daily_limit}`); setText('#threshold',`${st.threshold}%`);
   const toggle=$('#autoToggle'); if(toggle) toggle.checked=!!st.enabled;
-  setText('#modeLabel',st.enabled?'AUTONOMOUS':'SAFE MODE'); setText('#settingMode',st.enabled?'ON':'OFF'); setText('#settingLimit',st.daily_limit+'/day'); setText('#settingScore',st.threshold+'%');
+  setText('#modeLabel',st.enabled?'AUTONOMOUS':'SAFE MODE'); setText('#footMode',st.enabled?'Auto-submit on':'Safe mode · asks before sending'); markSteps(d); setText('#settingMode',st.enabled?'ON':'OFF'); setText('#settingLimit',st.daily_limit+'/day'); setText('#settingScore',st.threshold+'%');
+}
+
+let profileDone=false;
+function markSteps(d){
+  $('#stepProfile')?.classList.toggle('done',profileDone);
+  $('#stepSearch')?.classList.toggle('done',(d?.jobs||0)>0);
+  $('#stepApply')?.classList.toggle('done',(d?.applications||0)>0);
+}
+let allApps=[];
+function fillSelect(id,rows,label,emptyText){
+  const el=$(id); if(!el) return; const keep=el.value;
+  el.innerHTML=rows.length?`<option value="">${esc(emptyText)}</option>`+rows.map(r=>`<option value="${r.id}">#${r.id} · ${esc(label(r))}</option>`).join(''):`<option value="">${esc(emptyText.replace('Select','No'))} yet</option>`;
+  if(keep) el.value=keep;
+}
+function fillSelects(){
+  const appLabel=a=>`${a.title||'Role'} — ${a.company||''}`;
+  ['#browserAppId','#atsAppId','#tailorAppId','#offerAppId'].forEach(id=>fillSelect(id,allApps,appLabel,'Select an application'));
+  fillSelect('#interviewJobId',allJobs,j=>`${j.title||'Role'} — ${j.company||''}`,'Select a job');
 }
 function empty(t, action=''){return `<div class="panel empty-state"><div class="empty-icon">⌁</div><p>${esc(t)}</p>${action}</div>`}
 function jobCard(j){
   const score=Number(j.score||0); const safeUrl=esc(j.url||'#');
   return `<article class="job-card" data-id="${j.id}"><div class="job-main"><div class="company-icon">${esc((j.company||'?').slice(0,2).toUpperCase())}</div><div class="job-copy"><h4>${esc(j.title||'Untitled role')}</h4><p>${esc(j.company||'Company')} · ${esc(j.location||'Remote / unspecified')}</p><div class="job-meta"><span class="tag">${esc(j.source||'web')}</span>${j.remote?'<span class="tag accent-tag">REMOTE</span>':''}<span class="tag">${esc(j.status||'discovered')}</span></div></div></div><div class="job-side"><div class="score">${score.toFixed(0)}%</div><div class="job-actions"><a class="text-btn" href="${safeUrl}" target="_blank" rel="noopener">Open ↗</a><button class="mini-btn" data-action="qualify" data-id="${j.id}">Analyze</button><button class="mini-btn" data-action="draft" data-id="${j.id}">Prepare</button></div></div></article>`;
 }
-async function loadJobs(){const rows=await api('/api/jobs'); allJobs=Array.isArray(rows)?rows:[]; renderJobs(allJobs);}
-function renderJobs(rows){setHTML('#pipeline',rows.slice(0,6).map(jobCard).join('')||empty('No opportunities yet. Run the career agent or search for a role.'));setHTML('#jobsList',rows.map(jobCard).join('')||empty('No opportunities yet. Run the career agent or search for a role.'));}
+async function loadJobs(){const rows=await api('/api/jobs'); allJobs=Array.isArray(rows)?rows:[]; renderJobs(allJobs); fillSelects();}
+function renderJobs(rows){setHTML('#pipeline',rows.slice(0,6).map(jobCard).join('')||empty('No jobs yet. Run the career agent from Home, or search for a role above.'));setHTML('#jobsList',rows.map(jobCard).join('')||empty('No jobs match this filter yet.'));}
 async function loadApps(){
-  const rows=await api('/api/applications');
-  setHTML('#appsList',rows.length?`<div class="app-row header"><span>ROLE</span><span>COMPANY</span><span>FIT</span><span>STATUS</span><span>ACTION</span></div>`+rows.map(a=>`<div class="app-row"><div><b>${esc(a.title)}</b></div><div>${esc(a.company)}</div><div>${Number(a.score||0).toFixed(0)}%</div><div><span class="status ${esc(a.status)}">${esc(a.status.replaceAll('_',' ').toUpperCase())}</span></div><div class="row-actions"><button class="mini-btn" data-action="tailor" data-id="${a.id}">Tailor</button><button class="mini-btn" data-action="inspect" data-id="${a.id}">Inspect</button></div></div>`).join(''):empty('No applications yet. Prepare an opportunity to create the first application.'));
+  const rows=await api('/api/applications'); allApps=Array.isArray(rows)?rows:[]; fillSelects();
+  setHTML('#appsList',rows.length?`<div class="app-row header"><span>ROLE</span><span>COMPANY</span><span>FIT</span><span>STATUS</span><span>ACTION</span></div>`+rows.map(a=>`<div class="app-row"><div><b>${esc(a.title)}</b></div><div>${esc(a.company)}</div><div>${Number(a.score||0).toFixed(0)}%</div><div><span class="status ${esc(a.status)}">${esc(a.status.replaceAll('_',' ').toUpperCase())}</span></div><div class="row-actions"><button class="mini-btn" data-action="tailor" data-id="${a.id}">Tailor</button><button class="mini-btn" data-action="inspect" data-id="${a.id}">Inspect</button></div></div>`).join(''):empty('No applications yet. Open Jobs and press Prepare on a role to create your first draft.',`<button class="primary" data-view-jump="opportunities" style="margin-top:14px">Browse jobs</button>`));
 }
 const profileFields=[['name','Full name'],['headline','Professional headline'],['email','Email'],['phone','Phone'],['location','Location'],['address','Address'],['linkedin','LinkedIn'],['github','GitHub'],['website','Portfolio / website'],['skills','Skills'],['projects','Projects'],['experience','Experience'],['education','Education'],['preferences','Job preferences'],['work_authorization','Work authorization'],['sponsorship','Visa sponsorship requirement'],['salary','Salary expectation']];
 async function loadProfile(){
   const p=await api('/api/profile'); const vals=profileFields.map(([k])=>p[k]||''); const done=vals.filter(v=>String(v).trim()).length;
   const bar=$('#profileBar'); if(bar) bar.style.width=Math.round(done/profileFields.length*100)+'%'; setText('#profilePercent',Math.round(done/profileFields.length*100)+'% complete');
+  profileDone=!!(String(p.name||'').trim()&&String(p.email||'').trim()); markSteps(); const ini=(p.name||'').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join(''); if(ini) setText('#avatar',ini);
   setHTML('#profileForm',profileFields.map(([k,l])=>`<div class="field ${['skills','projects','experience','education','preferences'].includes(k)?'full':''}"><label>${l}</label>${['skills','projects','experience','education','preferences'].includes(k)?`<textarea data-key="${k}" placeholder="Add ${l.toLowerCase()}...">${esc(p[k]||'')}</textarea>`:`<input data-key="${k}" value="${esc(p[k]||'')}" placeholder="${esc(l)}">`}</div>`).join(''));
 }
 function fillProfile(p){
-  profileFields.forEach(([k])=>{const e=$(`[data-key="${k}"]`); if(e && p[k] != null) e.value=p[k];});
+  const filled=[],missing=[]; const core=[['name','name'],['email','email'],['phone','phone'],['skills','skills'],['experience','experience'],['education','education'],['projects','projects']];
+  profileFields.forEach(([k])=>{const e=$(`[data-key="${k}"]`); if(e && p[k]){e.value=p[k]; e.closest('.field')?.classList.add('filled');}});
+  core.forEach(([k,l])=>((p[k]&&String(p[k]).trim())?filled:missing).push(l));
+  const rep=$('#importReport'); if(rep){rep.classList.add('show'); rep.innerHTML=`<b>Filled:</b> ${filled.map(esc).join(', ')||'nothing'}.`+(missing.length?` <span class="miss">Not found: ${missing.map(esc).join(', ')}. Check the resume headings or add them by hand.</span>`:'')+` Review each field, then press Save profile.`; rep.scrollIntoView({behavior:'smooth',block:'center'});}
   const vals=profileFields.map(([k])=>$(`[data-key="${k}"]`)?.value||''); const done=vals.filter(v=>String(v).trim()).length; const pct=Math.round(done/profileFields.length*100); const bar=$('#profileBar'); if(bar) bar.style.width=pct+'%'; setText('#profilePercent',pct+'% complete');
 }
 async function importResume(){
@@ -121,3 +142,9 @@ $('#interviewBtn')?.addEventListener('click',async()=>{const id=Number($('#inter
 
 $('#browserExecuteBtn')?.addEventListener('click',async()=>{const id=Number($('#browserAppId')?.value||0);if(!id)return toast('Enter an application ID','error');const dry=$('#browserDryRun')?.checked!==false;const r=await runFeature('#browserResult',`/api/applications/${id}/browser/execute?dry_run=${dry}`,{method:'POST'});if(r)toast(dry?'ATS dry run completed — nothing was submitted.':(r.submitted?'Application submitted successfully.':'Human review required.'),r.submitted?'success':'info');});
 $('#negotiateBtn')?.addEventListener('click',async()=>{const id=Number($('#offerAppId')?.value||0);const offer=Number($('#offerAmount')?.value||0),low=Number($('#marketLow')?.value||0),high=Number($('#marketHigh')?.value||0);if(!id||!offer||!low)return toast('Enter application, offer and market range','error');await runFeature('#negotiationResult',`/api/applications/${id}/negotiation`,{method:'POST',body:JSON.stringify({offer,market_low:low,market_high:high})});});
+
+$('#themeToggle')?.addEventListener('click',()=>{const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');const next=cur==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('jh-theme',next)}catch(e){}});
+$('#moreTab')?.addEventListener('click',()=>{$('.sidebar')?.classList.add('open');document.body.classList.add('sidebar-open')});
+$('#scrim')?.addEventListener('click',()=>{$('.sidebar')?.classList.remove('open');document.body.classList.remove('sidebar-open')});
+
+document.addEventListener('click',e=>{const j=e.target.closest?.('[data-view-jump]');if(j)nav(j.dataset.viewJump)});

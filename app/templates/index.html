@@ -1,52 +1,101 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#07090f"><title>JobHunt AI — Autonomous Career Agent</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12"><title>JobHunt AI — Your job search agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<script>try{var t=localStorage.getItem('jh-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
-<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
 <div class="shell">
-<aside class="sidebar">
-  <div class="brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><strong>JobHunt</strong><small>AI AGENT</small></div></div>
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><div class="brand-mark">J</div><div><strong>JobHunt AI</strong><small>Your job search agent</small></div></div>
   <nav>
-    <button class="nav active" data-view="overview"><span>⌂</span> Overview</button>
-    <button class="nav" data-view="opportunities"><span>◈</span> Opportunities</button>
-    <button class="nav" data-view="applications"><span>↗</span> Applications</button>
-    <button class="nav" data-view="profile"><span>◎</span> Candidate</button>
-    <button class="nav" data-view="intelligence"><span>◉</span> Intelligence</button><button class="nav" data-view="interview"><span>◇</span> Interview lab</button><button class="nav" data-view="offer"><span>₦</span> Offer lab</button><button class="nav" data-view="settings"><span>⚙</span> Agent settings</button>
+    <div class="nav-group">Workspace</div>
+    <button class="nav active" data-view="overview"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>Home</button>
+    <button class="nav" data-view="opportunities"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>Jobs</button>
+    <button class="nav" data-view="applications"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg>Applications</button>
+    <div class="nav-group">Prepare</div>
+    <button class="nav" data-view="interview"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L3 21l1.8-6A8 8 0 1121 12z"/></svg>Interview prep</button>
+    <button class="nav" data-view="offer"><svg viewBox="0 0 24 24"><path d="M12 3v18M17 7.5C17 5.6 14.8 4.5 12 4.5S7 5.8 7 7.7c0 4.6 10 2.6 10 7.6 0 2-2.2 3.2-5 3.2s-5-1.2-5-3"/></svg>Offers</button>
+    <div class="nav-group">Account</div>
+    <button class="nav" data-view="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg>My profile</button>
+    <button class="nav" data-view="intelligence"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 005 5L21 13l-8 8-4-4 8-8z"/></svg>Apply tools</button>
+    <button class="nav" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</button>
   </nav>
-  <div class="sidebar-foot"><div class="status-dot"></div><div><b>Agent online</b><small>Policy engine ready</small></div></div>
+  <div class="sidebar-foot"><div class="status-dot"></div><div><b>Agent online</b><small id="footMode">Safe mode · asks before sending</small></div></div>
 </aside>
+<div class="scrim" id="scrim"></div>
 <main class="main">
-<header class="topbar"><div><div class="crumb">CAREER OPERATING SYSTEM <span>/</span> <b id="viewTitle">Overview</b></div><h1 id="headline">Your career, on autopilot.</h1></div><div class="top-actions"><button class="icon-btn mobile-menu" id="mobileMenu" title="Menu">☰</button><button class="icon-btn" id="refresh" title="Refresh">↻</button><button class="avatar" id="avatar" title="Open candidate profile" aria-label="Open candidate profile">MD</button></div></header>
-<section class="hero-card">
-  <div class="hero-copy"><div class="live"><i></i> CAREER AGENT <b id="modeLabel">SAFE MODE</b></div><h2>Find the roles worth your time.<br><em>Let the agent do the work.</em></h2><p>Discover relevant roles, score your fit, prepare applications and keep every opportunity moving. Submission stays guarded until you explicitly enable it.</p>
-  <div class="hero-actions"><button class="primary" id="runAgent">Run career agent <span>→</span></button><button class="ghost" data-view-jump="opportunities">Browse opportunities</button></div><div class="agent-result" id="agentResult"><div><small>DISCOVERED</small><b id="agentDiscovered">0</b></div><div><small>QUALIFIED</small><b id="agentQualified">0</b></div><div><small>PREPARED</small><b id="agentPrepared">0</b></div><div><small>SKIPPED</small><b id="agentSkipped">0</b></div><div class="agent-total"><small>POOL</small><b id="agentTotal">—</b></div></div></div>
-  <div class="orb"><div class="orb-core">AI</div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div></div>
-</section>
-<section class="metrics">
- <div class="metric"><small>DISCOVERED</small><strong id="jobs">—</strong><span>roles in pipeline</span></div>
- <div class="metric"><small>QUALIFIED</small><strong id="qualified">—</strong><span>above fit threshold</span></div>
- <div class="metric"><small>SUBMITTED</small><strong id="submitted">—</strong><span>applications sent</span></div>
- <div class="metric"><small>INTERVIEWS</small><strong id="interviews">—</strong><span>conversations started</span></div>
-</section>
+<header class="topbar">
+  <div class="top-left"><button class="icon-btn mobile-menu" id="mobileMenu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <div><div class="crumb"><b id="viewTitle">Home</b></div><h1 id="headline">Your job search, on autopilot.</h1></div></div>
+  <div class="top-actions"><button class="icon-btn" id="themeToggle" aria-label="Switch theme"><svg viewBox="0 0 24 24"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg></button><button class="icon-btn" id="refresh" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg></button><button class="avatar" id="avatar" aria-label="Open my profile">ME</button></div>
+</header>
+
 <section id="overview" class="view active-view">
- <div class="section-title"><div><span class="kicker">INTELLIGENCE FEED</span><h3>Opportunity pipeline</h3></div><button class="text-btn" data-view-jump="opportunities">View all →</button></div>
- <div class="pipeline" id="pipeline"></div>
- <div class="lower-grid"><div class="panel"><div class="panel-head"><div><span class="kicker">AUTONOMY</span><h3>Submission control</h3></div><label class="switch"><input id="autoToggle" type="checkbox"><span></span></label></div><p class="muted">When enabled, the agent can submit qualifying routine applications within your configured policy. CAPTCHAs, 2FA, unknown required fields and legal attestations pause the workflow.</p><div class="policy-row"><span>Daily capacity</span><b id="capacity">—</b></div><div class="policy-row"><span>Minimum fit</span><b id="threshold">—</b></div></div>
- <div class="panel"><div class="panel-head"><div><span class="kicker">ACTIVITY</span><h3>Agent state</h3></div><span class="badge green">READY</span></div><div class="activity"><div><i></i><span>Opportunity discovery</span><b>READY</b></div><div><i></i><span>Fit intelligence</span><b>READY</b></div><div><i></i><span>Application tailoring</span><b>READY</b></div><div><i></i><span>Submission worker</span><b>GUARDED</b></div></div></div></div>
+  <div class="hero">
+    <div class="hero-copy"><span class="pill"><i class="live-dot"></i><span id="modeLabel">SAFE MODE</span></span>
+      <h2>Find the right jobs.<br><span class="grad">We do the busywork.</span></h2>
+      <p>The agent searches for roles, scores how well you fit, and prepares your application. In safe mode it never sends anything without you.</p>
+      <div class="hero-actions"><button class="primary big" id="runAgent">Run career agent <span>→</span></button><button class="ghost big" data-view-jump="opportunities">Browse jobs</button></div>
+      <div class="agent-result" id="agentResult"><div><small>FOUND</small><b id="agentDiscovered">0</b></div><div><small>GOOD FIT</small><b id="agentQualified">0</b></div><div><small>PREPARED</small><b id="agentPrepared">0</b></div><div><small>REUSED</small><b id="agentSkipped">0</b></div><div class="agent-total"><small>TOTAL</small><b id="agentTotal">—</b></div></div>
+    </div>
+  </div>
+  <div class="steps" id="steps">
+    <button class="step" id="stepProfile" data-view-jump="profile"><i>1</i><div><b>Add your details</b><small>Upload a resume or fill in your profile</small></div><em>→</em></button>
+    <button class="step" id="stepSearch" data-view-jump="opportunities"><i>2</i><div><b>Find jobs</b><small>Run the agent or search a role</small></div><em>→</em></button>
+    <button class="step" id="stepApply" data-view-jump="applications"><i>3</i><div><b>Prepare &amp; apply</b><small>Review drafts before anything is sent</small></div><em>→</em></button>
+  </div>
+  <div class="metrics">
+    <div class="metric"><small>Jobs found</small><strong id="jobs">—</strong><span>in your pipeline</span></div>
+    <div class="metric"><small>Good fit</small><strong id="qualified">—</strong><span>above your threshold</span></div>
+    <div class="metric"><small>Submitted</small><strong id="submitted">—</strong><span>applications sent</span></div>
+    <div class="metric"><small>Interviews</small><strong id="interviews">—</strong><span>conversations started</span></div>
+  </div>
+  <div class="section-title"><div><h3>Top matches</h3></div><button class="text-btn" data-view-jump="opportunities">See all →</button></div>
+  <div class="pipeline" id="pipeline"></div>
+  <div class="lower-grid">
+    <div class="panel"><div class="panel-head"><div><h3>Auto-submit</h3><p class="muted">When on, routine applications inside your rules can be sent automatically. CAPTCHAs, 2FA, unknown required questions and legal declarations always pause for you.</p></div><label class="switch"><input id="autoToggle" type="checkbox"><span></span></label></div><div class="policy-row"><span>Today</span><b id="capacity">—</b></div><div class="policy-row"><span>Minimum fit score</span><b id="threshold">—</b></div></div>
+    <div class="panel"><div class="panel-head"><h3>Agent status</h3><span class="badge green">READY</span></div><div class="activity"><div><i></i><span>Job discovery</span><b>READY</b></div><div><i></i><span>Fit scoring</span><b>READY</b></div><div><i></i><span>Application drafting</span><b>READY</b></div><div><i></i><span>Browser worker</span><b>GUARDED</b></div></div></div>
+  </div>
 </section>
-<section id="opportunities" class="view"><div class="section-title"><div><span class="kicker">SEARCH + MATCH</span><h3>Opportunities</h3></div></div><div class="searchbar"><input id="q" placeholder="Search roles — e.g. AI Product Engineer, remote Nigeria"><button class="primary" id="searchBtn">Discover roles →</button></div><div class="filters"><button class="filter active">All roles</button><button class="filter">Remote</button><button class="filter">New grad</button><button class="filter">AI / ML</button></div><div class="pipeline full" id="jobsList"></div></section>
-<section id="applications" class="view"><div class="section-title"><div><span class="kicker">EXECUTION LOG</span><h3>Applications</h3></div></div><div class="app-table" id="appsList"></div></section>
-<section id="profile" class="view"><div class="section-title"><div><span class="kicker">SOURCE OF TRUTH</span><h3>Candidate profile</h3><p class="muted">The agent uses this information to search, match, tailor and prepare applications. Keep it truthful and current.</p></div><button class="primary" id="saveProfile">Save profile</button></div><div class="profile-banner"><div><b>Candidate identity</b><span>Complete your profile before running the agent.</span></div><div class="completion-meta"><strong id="profilePercent">0% complete</strong><div class="profile-completion"><i id="profileBar"></i></div></div></div><div class="resume-import"><div><span class="kicker">FAST IMPORT</span><h3>Use your resume instead</h3><p class="muted">Upload a PDF or DOCX and JobHunt AI will extract your identity, headline, skills, projects, experience and education. Review before saving.</p></div><div class="resume-actions"><label class="file-pick"><input id="resumeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span>Choose resume</span></label><span id="resumeName">No file selected</span><button class="primary" id="importResume">Parse & auto-fill</button></div></div><div class="form-grid" id="profileForm"></div></section>
-<section id="intelligence" class="view"><div class="section-title"><div><span class="kicker">DEEP APPLICATION INTELLIGENCE</span><h3>ATS + workplace intelligence</h3><p class="muted">Map complex ATS fields, measure keyword alignment and separate observable evidence from assumptions about employers.</p></div></div><div class="feature-grid"><div class="panel browser-panel"><span class="kicker">REAL ATS WORKER</span><h3>Inspect → map → fill → submit</h3><p class="muted">The Playwright worker detects the live form, maps fields from your source-of-truth profile, uploads your saved resume, and pauses for CAPTCHA, 2FA, legal attestations, unknown required fields or login.</p><div class="inline-form"><input id="browserAppId" type="number" placeholder="Application ID"><label class="check"><input id="browserDryRun" type="checkbox" checked> Dry run</label><button class="primary" id="browserExecuteBtn">Run browser worker</button></div><pre id="browserResult" class="result-box">No browser run yet.</pre></div><div class="panel"><span class="kicker">ATS MAPPER</span><h3>Dynamic field mapping</h3><p class="muted">Supports Workday, Greenhouse, Lever, Ashby and generic forms. Unknown required fields are surfaced for review rather than guessed.</p><div class="inline-form"><input id="atsAppId" type="number" placeholder="Application ID"><button class="primary" id="atsMapDemo">Map profile</button></div><pre id="atsResult" class="result-box">No mapping run yet.</pre></div><div class="panel"><span class="kicker">ATS ALIGNMENT</span><h3>Line-by-line tailoring</h3><p class="muted">Measures job-language coverage and shows which existing bullets align. It does not invent experience or stuff irrelevant keywords.</p><div class="inline-form"><input id="tailorAppId" type="number" placeholder="Application ID"><button class="primary" id="tailorAnalyze">Analyze alignment</button></div><pre id="tailorResult" class="result-box">No alignment run yet.</pre></div><div class="panel"><span class="kicker">WORKPLACE TELEMETRY</span><h3>Evidence before applying</h3><p class="muted">Company reports are built from observable data. LinkedIn graph access and external workforce datasets require authorized connections and are not inferred.</p><div class="inline-form"><input id="telemetryCompany" placeholder="Company name"><button class="primary" id="telemetryBtn">Build report</button></div><pre id="telemetryResult" class="result-box">No company report yet.</pre></div><div class="panel"><span class="kicker">CANDIDATE PROTOCOL</span><h3>Career token</h3><p class="muted">Create a short-lived signed candidate token for an employer integration. It contains only the profile data issued by this workspace.</p><button class="primary" id="tokenBtn">Issue candidate token</button><pre id="tokenResult" class="result-box">No token issued.</pre></div></div></section>
-<section id="interview" class="view"><div class="section-title"><div><span class="kicker">CLOSED LOOP PREP</span><h3>Interview & assessment lab</h3><p class="muted">Generate role-specific mock interviews from the actual posting and your current profile.</p></div></div><div class="panel"><div class="inline-form"><input id="interviewJobId" type="number" placeholder="Job ID"><button class="primary" id="interviewBtn">Generate mock run</button></div><div id="interviewResult" class="interview-list"></div></div><div class="panel assessment-note"><h3>Take-home copilot</h3><p class="muted">Use this workspace to reason about architecture, trade-offs, tests and edge cases while keeping your original code untouched. Company-specific assessment rules always take priority.</p></div></section>
-<section id="offer" class="view"><div class="section-title"><div><span class="kicker">OFFER STAGE</span><h3>Negotiation lab</h3><p class="muted">Use current, identified market ranges as inputs. The model does not pretend to know an employer's private budget.</p></div></div><div class="panel"><div class="offer-grid"><input id="offerAppId" type="number" placeholder="Application ID"><input id="offerAmount" type="number" placeholder="Offer amount"><input id="marketLow" type="number" placeholder="Market low"><input id="marketHigh" type="number" placeholder="Market high"><button class="primary" id="negotiateBtn">Model counter</button></div><pre id="negotiationResult" class="result-box">No negotiation model run yet.</pre></div></section>
-<section id="settings" class="view"><div class="section-title"><div><span class="kicker">POLICY ENGINE</span><h3>Agent settings</h3></div></div><div class="settings-grid"><div class="panel"><h3>Autonomous submission</h3><p class="muted">Your rules are applied before every submission. The agent never invents candidate facts and never bypasses anti-bot controls.</p><div class="policy-row"><span>Autonomous submission</span><b id="settingMode">OFF</b></div><div class="policy-row"><span>Daily limit</span><b id="settingLimit">—</b></div><div class="policy-row"><span>Minimum match</span><b id="settingScore">—</b></div><div class="policy-row"><span>Allowed domains</span><b>Allowlist</b></div></div><div class="panel"><h3>Deployment</h3><p class="muted">Designed for Vercel + PostgreSQL. Browser sessions remain external to serverless functions; live application submission requires an authenticated browser provider or permitted browser worker.</p><a class="docs" href="/api/docs" target="_blank">Open API docs ↗</a></div></div></section>
-<footer><span>JOBHUNT AI v3 · CAREER OPERATING SYSTEM</span><span>Truthful automation · guarded execution · human control</span></footer>
-</main></div><div id="toast" class="toast"></div><script src="/static/app.js"></script>
+
+<section id="opportunities" class="view"><div class="searchbar"><input id="q" placeholder="Search roles, e.g. AI Product Engineer, remote Nigeria"><button class="primary" id="searchBtn">Find jobs</button></div><div class="filters"><button class="filter active">All</button><button class="filter">Remote</button><button class="filter">New grad</button><button class="filter">AI / ML</button></div><div class="pipeline full" id="jobsList"></div></section>
+
+<section id="applications" class="view"><div class="app-table" id="appsList"></div></section>
+
+<section id="profile" class="view">
+  <div class="resume-import"><div><h3>Import from your resume</h3><p class="muted">Upload a PDF or DOCX. We read it, fill in the form below, and you review everything before saving.</p></div><div class="resume-actions"><label class="file-pick"><input id="resumeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span>Choose resume</span></label><span id="resumeName">No file selected</span><button class="primary" id="importResume">Parse &amp; auto-fill</button></div></div>
+  <div class="import-report" id="importReport"></div>
+  <div class="profile-banner"><div><b>Profile completeness</b><span>The agent only uses what you write here. Keep it truthful.</span></div><div class="completion-meta"><strong id="profilePercent">0% complete</strong><div class="profile-completion"><i id="profileBar"></i></div></div></div>
+  <div class="form-grid" id="profileForm"></div>
+  <div class="savebar"><button class="primary big" id="saveProfile">Save profile</button></div>
+</section>
+
+<section id="intelligence" class="view"><p class="lead">Tools for the application step. Pick an application from the list; nothing is guessed or invented.</p><div class="feature-grid">
+  <div class="panel browser-panel"><h3>Browser worker</h3><p class="muted">Opens the real application form, fills it from your profile, uploads your resume, and stops for CAPTCHA, 2FA, logins, legal questions or unknown required fields. Dry run fills nothing permanently.</p><div class="inline-form"><select id="browserAppId"></select><label class="check"><input id="browserDryRun" type="checkbox" checked> Dry run</label><button class="primary" id="browserExecuteBtn">Run browser worker</button></div><pre id="browserResult" class="result-box">No browser run yet.</pre></div>
+  <div class="panel"><h3>Field mapping preview</h3><p class="muted">Shows how your profile maps onto a standard sample form (name, email, resume…). Use “Inspect” on an application to read a real form.</p><div class="inline-form"><select id="atsAppId"></select><button class="primary" id="atsMapDemo">Preview mapping</button></div><pre id="atsResult" class="result-box">No mapping run yet.</pre></div>
+  <div class="panel"><h3>Keyword alignment</h3><p class="muted">Shows which job keywords your existing profile already covers. It never adds experience you don't have.</p><div class="inline-form"><select id="tailorAppId"></select><button class="primary" id="tailorAnalyze">Analyze</button></div><pre id="tailorResult" class="result-box">No alignment run yet.</pre></div>
+  <div class="panel"><h3>Company snapshot</h3><p class="muted">Built only from observable, public data. Nothing about private budgets or connections is inferred.</p><div class="inline-form"><input id="telemetryCompany" placeholder="Company name"><button class="primary" id="telemetryBtn">Build report</button></div><pre id="telemetryResult" class="result-box">No company report yet.</pre></div>
+  <div class="panel"><h3>Candidate token</h3><p class="muted">A short-lived signed token with only the profile data from this workspace, for employer integrations.</p><button class="primary" id="tokenBtn">Issue token</button><pre id="tokenResult" class="result-box">No token issued.</pre></div>
+</div></section>
+
+<section id="interview" class="view"><div class="panel"><h3>Mock interview</h3><p class="muted">Questions are generated from the actual job posting and your profile.</p><div class="inline-form"><select id="interviewJobId"></select><button class="primary" id="interviewBtn">Generate questions</button></div><div id="interviewResult" class="interview-list"></div></div></section>
+
+<section id="offer" class="view"><div class="panel"><h3>Offer negotiation</h3><p class="muted">Enter a real offer and the market range you found. The model doesn't guess an employer's private budget.</p><div class="offer-grid"><select id="offerAppId"></select><input id="offerAmount" type="number" placeholder="Offer amount"><input id="marketLow" type="number" placeholder="Market low"><input id="marketHigh" type="number" placeholder="Market high"><button class="primary" id="negotiateBtn">Model counter</button></div><pre id="negotiationResult" class="result-box">No negotiation model run yet.</pre></div></section>
+
+<section id="settings" class="view"><div class="settings-grid"><div class="panel"><h3>Autonomy rules</h3><p class="muted">Rules apply before every submission. The agent never invents candidate facts and never bypasses anti-bot checks.</p><div class="policy-row"><span>Auto-submit</span><b id="settingMode">OFF</b></div><div class="policy-row"><span>Daily limit</span><b id="settingLimit">—</b></div><div class="policy-row"><span>Minimum match</span><b id="settingScore">—</b></div><div class="policy-row"><span>Allowed domains</span><b>Allowlist</b></div></div><div class="panel"><h3>Deployment</h3><p class="muted">Runs on Vercel + PostgreSQL. Browser sessions live on a separate worker because serverless functions can't hold them.</p><a class="docs" href="/api/docs" target="_blank">Open API docs ↗</a></div></div></section>
+<footer><span>JobHunt AI</span><span>Truthful automation · you stay in control</span></footer>
+</main></div>
+<nav class="tabbar" aria-label="Main">
+  <button class="nav tab active" data-view="overview"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg><span>Home</span></button>
+  <button class="nav tab" data-view="opportunities"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg><span>Jobs</span></button>
+  <button class="nav tab" data-view="applications"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg><span>Applied</span></button>
+  <button class="nav tab" data-view="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg><span>Profile</span></button>
+  <button class="tab" id="moreTab"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+</nav>
+<div id="toast" class="toast"></div><script src="/static/app.js"></script>
 </body></html>
