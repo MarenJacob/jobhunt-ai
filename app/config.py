@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     browser_worker_secret: str = ""
     browser_worker_timeout: int = 120
     browser_session_name: str = "default"
+    job_sources: str = "remotive,remoteok,arbeitnow"
+    job_boards: str = ""
+    discovery_limit: int = 40
+    job_stale_days: int = 10
     resume_path: str = ""
     follow_up_days: int = 7
     smtp_host: str = ""

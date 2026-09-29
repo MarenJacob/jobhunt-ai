@@ -39,3 +39,10 @@ def migrate_additive():
             for name,typ in additions.items():
                 if name not in cols:
                     conn.execute(text(f"ALTER TABLE profile ADD COLUMN {name} {typ}"))
+    if "jobs" in tables:
+        cols={x["name"] for x in inspector.get_columns("jobs")}
+        additions={"verified":"BOOLEAN NOT NULL DEFAULT FALSE","posted_at":"TIMESTAMP","last_checked_at":"TIMESTAMP","expired":"BOOLEAN NOT NULL DEFAULT FALSE"}
+        with engine.begin() as conn:
+            for name,typ in additions.items():
+                if name not in cols:
+                    conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {name} {typ}"))

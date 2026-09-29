@@ -11,7 +11,9 @@ from .db import SessionLocal, init_db
 from .models import Job, Application, Feedback, Profile, ATSRun, TailoringRun, TelemetryReport, InterviewSession, NegotiationRun, BrowserRun
 from .schemas import JobIn, ProfileIn, ApplicationIn, FeedbackIn, SearchIn
 from .services.matcher import match_job
-from .services.search import SearchService
+from .services.sources import discover as discover_jobs
+from .services.jobfilter import verify_page, looks_expired
+from .services import jobfilter as _jf
 from .services.ai import AIService
 from .services.browser import BrowserAutomation
 from .services.feedback import outcome_insight
@@ -76,14 +78,18 @@ def health():
 
 @app.get("/api/dashboard")
 def dashboard(s: Session=Depends(db)):
-    jobs=s.query(Job).all(); apps=s.query(Application).all(); fb=s.query(Feedback).all()
+    jobs=s.query(Job).filter(Job.expired==False).all(); apps=s.query(Application).all(); fb=s.query(Feedback).all()
     submitted=sum(a.status=="submitted" for a in apps)
     pending=sum(a.status in {"draft","application_draft","approved_for_submission"} for a in apps)
     blocked=sum(a.status in {"needs_human","submission_error"} for a in apps)
-    return {"jobs":len(jobs),"qualified":sum(j.match_score>=60 for j in jobs),"applications":len(apps),"interviews":sum(a.status=="interview" for a in apps),"submitted":submitted,"pending":pending,"blocked":blocked,"feedback":outcome_insight(fb)}
+    expired_count=s.query(Job).filter(Job.expired==True).count()
+    return {"jobs":len(jobs),"qualified":sum(j.match_score>=60 for j in jobs),"applications":len(apps),"interviews":sum(a.status=="interview" for a in apps),"submitted":submitted,"pending":pending,"blocked":blocked,"expired":expired_count,"feedback":outcome_insight(fb)}
 
 @app.get("/api/jobs")
-def jobs(s: Session=Depends(db)): return [{"id":j.id,"title":j.title,"company":j.company,"location":j.location,"url":j.url,"source":j.source,"score":j.match_score,"status":j.status,"remote":j.remote,"description":j.description or ""} for j in s.query(Job).order_by(Job.match_score.desc()).all()]
+def jobs(include_expired: bool=False, s: Session=Depends(db)):
+    q=s.query(Job)
+    if not include_expired: q=q.filter(Job.expired==False)
+    return [{"id":j.id,"title":j.title,"company":j.company,"location":j.location,"url":j.url,"source":j.source,"score":j.match_score,"status":j.status,"remote":j.remote,"verified":j.verified,"expired":j.expired,"posted_at":j.posted_at.isoformat() if j.posted_at else None,"description":j.description or ""} for j in q.order_by(Job.match_score.desc()).all()]
 
 @app.post("/api/jobs")
 def add_job(data: JobIn, s: Session=Depends(db)):
@@ -93,24 +99,31 @@ def add_job(data: JobIn, s: Session=Depends(db)):
 
 @app.post("/api/jobs/ingest")
 async def ingest(data: SearchIn, s: Session=Depends(db)):
-    results=await SearchService().search(data.query, data.max_results)
-    added=[]
-    for r in results:
-        url=r.get("url","")
-        if not url: continue
-        if s.query(Job).filter_by(url=url).first(): continue
-        title=r.get("title",""); desc=r.get("content",""); company=r.get("company","") or ""
-        j=Job(title=title,company=company,location="",url=url,source=SearchService.source_for(url),description=desc,remote="remote" in (title+desc).lower())
-        s.add(j); added.append(title)
-    s.commit(); return {"added":len(added),"titles":added,"configured":bool(results or __import__('os').getenv('TAVILY_API_KEY'))}
+    """Manual one-off search, filtered and verified the same way as the agent run
+    (rejects blogs/wikis/listing pages; only stores single, open job postings)."""
+    from .config import settings as _settings
+    if not _settings.tavily_api_key:
+        raise HTTPException(503, "Web search is not configured. Add TAVILY_API_KEY, or use Run career agent to pull from job feeds.")
+    import httpx
+    report = {"errors": [], "rejected": []}
+    async with httpx.AsyncClient() as client:
+        candidates = await __import__("app.services.sources", fromlist=["search_web"]).search_web(client, [data.query], report)
+    added = []
+    for c in candidates[: data.max_results]:
+        if s.query(Job).filter_by(url=c.url).first(): continue
+        j = Job(title=c.title, company=c.company, location=c.location, url=c.url, source=c.source,
+                description=c.description, remote=c.remote, verified=c.verified)
+        s.add(j); added.append(c.title)
+    s.commit()
+    return {"added": len(added), "titles": added, "rejected": len(report["rejected"]), "configured": True}
 
 @app.post("/api/jobs/{job_id}/qualify")
 def qualify(job_id:int,s:Session=Depends(db)):
     j=s.get(Job,job_id)
     if not j: raise HTTPException(404,"Job not found")
     p=get_profile(s); text=" ".join([p.skills,p.projects,p.experience,p.education,p.preferences])
-    r=match_job(j.title+" "+j.description,text,p.preferences)
-    j.match_score=r.score; j.qualification=json.dumps({"matched":r.matched,"gaps":r.gaps,"rationale":r.rationale}); j.status="qualified" if r.score>=60 else "review"
+    r=match_job(j.title+" "+j.description,text,p.preferences,j.title,p.headline or "",p.location or "")
+    j.match_score=r.score; j.qualification=json.dumps({"matched":r.matched,"gaps":r.gaps,"rationale":r.rationale,"flags":r.flags}); j.status="qualified" if r.score>=60 else "review"
     s.commit(); return {"score":r.score,"matched":r.matched,"gaps":r.gaps,"rationale":r.rationale}
 
 
@@ -224,46 +237,50 @@ def agent_readiness(s: Session=Depends(db)):
 
 @app.post("/api/agent/run")
 async def agent_run(s: Session=Depends(db)):
-    """Discover once, then continuously process the existing opportunity pool.
-
-    The first run fills the pipeline. Once 21+ roles exist, discovery is skipped
-    so an accidental second click does not create a new search batch.
-    """
+    """Discover new roles from real job feeds + verified web search, re-check the
+    existing pipeline for postings that have gone stale, then score everything."""
     from .config import settings
     profile = get_profile(s)
-    query = f"{profile.headline or 'software engineer'} jobs careers {profile.preferences or 'junior graduate remote Nigeria'}"
-    existing_count = s.query(Job).count()
-    discovered = 0
-    skipped = 0
+    if not (profile.name or "").strip() or not (profile.email or "").strip():
+        raise HTTPException(400, "Add your name and email in My profile before running the agent.")
+    profile_dict = {c: getattr(profile, c) for c in ["headline", "skills", "projects", "experience", "education", "preferences", "location"]}
 
-    if existing_count >= 21:
-        skipped = existing_count
-    elif settings.tavily_api_key:
-        needed = max(21 - existing_count, 1)
-        results = await SearchService().search(query, min(20, needed))
-        for r in results:
-            url = r.get("url", "")
-            if not url or s.query(Job).filter_by(url=url).first():
-                continue
-            title = r.get("title", "")
-            desc = r.get("content", "")
-            company = r.get("company", "") or ""
-            j = Job(title=title, company=company, location="", url=url,
-                    source=SearchService.source_for(url), description=desc,
-                    remote="remote" in (title + " " + desc).lower())
-            s.add(j); discovered += 1
+    known_urls = {u for (u,) in s.query(Job.url).all()}
+    candidates, report = await discover_jobs(profile_dict, known_urls)
+    discovered = 0
+    now = datetime.utcnow()
+    for c in candidates:
+        j = Job(title=c.title, company=c.company, location=c.location, url=c.url, source=c.source,
+                description=c.description, remote=c.remote, verified=c.verified, posted_at=now, last_checked_at=now)
+        s.add(j); discovered += 1
+    s.commit()
+
+    # Re-check open roles already in the pipeline so stale postings do not linger forever.
+    stale_cutoff = now - timedelta(days=settings.job_stale_days if hasattr(settings, "job_stale_days") else 10)
+    to_check = (s.query(Job).filter(Job.expired == False, Job.status.in_(["discovered", "qualified", "review"]))
+                .filter((Job.last_checked_at == None) | (Job.last_checked_at < stale_cutoff)).order_by(Job.created_at.desc()).limit(25).all())
+    rechecked, expired_now = 0, 0
+    if to_check:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            for j in to_check:
+                jp, text, status = await verify_page(client, j.url)
+                j.last_checked_at = now; rechecked += 1
+                if status in (404, 410) or looks_expired(text) or (jp and jp.get("expired")):
+                    j.expired = True; j.status = "expired"; expired_now += 1
+                elif jp:
+                    j.verified = True
+                    if jp.get("description"): j.description = jp["description"]
         s.commit()
-    else:
-        raise HTTPException(503, "Job discovery is not configured. Add TAVILY_API_KEY in Vercel environment variables.")
 
     text = " ".join([profile.skills or "", profile.projects or "", profile.experience or "", profile.education or "", profile.preferences or ""])
-    jobs = s.query(Job).order_by(Job.created_at.desc()).limit(100).all()
+    jobs = s.query(Job).filter(Job.expired == False).order_by(Job.created_at.desc()).limit(150).all()
     qualified = 0
     drafts = 0
     for j in jobs:
-        r = match_job(j.title + " " + (j.description or ""), text, profile.preferences or "")
+        r = match_job(j.title + " " + (j.description or ""), text, profile.preferences or "", j.title, profile.headline or "", profile.location or "")
         j.match_score = r.score
-        j.qualification = json.dumps({"matched": r.matched, "gaps": r.gaps, "rationale": r.rationale})
+        j.qualification = json.dumps({"matched": r.matched, "gaps": r.gaps, "rationale": r.rationale, "flags": r.flags})
         j.status = "qualified" if r.score >= settings.minimum_match_score else "review"
         if j.status == "qualified":
             qualified += 1
@@ -272,12 +289,18 @@ async def agent_run(s: Session=Depends(db)):
                 s.add(Application(job_id=j.id, status="application_draft")); drafts += 1
     s.commit()
 
-    result = {"mode": "autonomous" if settings.auto_submit else "safe", "discovered": discovered, "qualified": qualified, "drafts": drafts, "prepared": drafts, "skipped": skipped, "total_roles": len(jobs)}
-    if settings.auto_submit:
+    result = {"mode": "autonomous" if settings.auto_submit else "safe", "discovered": discovered, "qualified": qualified,
+              "drafts": drafts, "prepared": drafts, "skipped": len(known_urls), "total_roles": len(jobs),
+              "rechecked": rechecked, "expired": expired_now, "sources": report["sources"],
+              "rejected_examples": report["rejected"][:8], "rejected_total": len(report["rejected"]),
+              "search_errors": report["errors"]}
+    if not report["sources"] and not settings.tavily_api_key:
+        result["message"] = "No job feeds returned results this run and web search is not configured (set TAVILY_API_KEY). Existing roles were re-scored."
+    elif settings.auto_submit:
         execution = await automation_run(s)
         result.update(execution)
     else:
-        result["message"] = "Existing roles were reused when possible; roles were scored and application drafts prepared. Submission remains off."
+        result["message"] = f"Found {discovered} new role(s), rejected {len(report['rejected'])} non-job pages, and rechecked {rechecked} existing listing(s) ({expired_now} had gone stale)."
     return result
 
 

@@ -133,15 +133,99 @@ function bindFilters(){$$('.filter').forEach(btn=>btn.onclick=()=>{$$('.filter')
 async function refreshAll(){await Promise.all([loadDashboard(),loadJobs(),loadApps(),loadProfile()]);bindFilters()}
 window.addEventListener('DOMContentLoaded',()=>refreshAll().catch(e=>toast(`Workspace load failed: ${e.message}`,'error')));
 
-async function runFeature(id, path, opts={}){const el=$(id);try{const r=await api(path,opts);if(el)el.textContent=JSON.stringify(r,null,2);toast('Completed successfully','success');return r}catch(e){if(el)el.textContent=e.message;toast(e.message,'error');return null}}
-$('#atsMapDemo')?.addEventListener('click',async()=>{const id=Number($('#atsAppId')?.value||0);if(!id)return toast('Enter an application ID','error');const fields=[{name:'first_name',label:'First Name',required:true},{name:'last_name',label:'Last Name',required:true},{name:'email',label:'Email Address',required:true},{name:'phone',label:'Phone Number'},{name:'city',label:'City',required:true},{name:'state',label:'State'},{name:'country',label:'Country',required:true},{name:'resume',label:'Resume',required:true},{name:'cover_letter',label:'Cover Letter'}];await runFeature('#atsResult',`/api/applications/${id}/ats-map`,{method:'POST',body:JSON.stringify(fields)});});
-$('#tailorAnalyze')?.addEventListener('click',async()=>{const id=Number($('#tailorAppId')?.value||0);if(!id)return toast('Enter an application ID','error');await runFeature('#tailorResult',`/api/applications/${id}/tailor/analyze`,{method:'POST'});});
-$('#telemetryBtn')?.addEventListener('click',async()=>{const c=($('#telemetryCompany')?.value||'').trim();if(!c)return toast('Enter a company name','error');await runFeature('#telemetryResult',`/api/companies/${encodeURIComponent(c)}/telemetry`,{method:'POST'});});
-$('#tokenBtn')?.addEventListener('click',async()=>{await runFeature('#tokenResult','/api/candidate/token',{method:'POST'});});
-$('#interviewBtn')?.addEventListener('click',async()=>{const id=Number($('#interviewJobId')?.value||0);if(!id)return toast('Enter a job ID','error');const r=await runFeature('#interviewResult',`/api/interviews/mock?job_id=${id}`,{method:'POST'});if(r){const box=$('#interviewResult');if(box)box.innerHTML=(r.questions||[]).map((q,i)=>`<article class="interview-card"><small>${esc(q.type||'QUESTION')} · ${esc(q.focus||'')}</small><h4>${i+1}. ${esc(q.question||'')}</h4></article>`).join('');}});
+function statusMeta(status){
+  const m={submitted:['ok','Submitted'],dry_run:['info','Dry run — nothing sent'],inspected:['info','Inspected'],needs_human:['warn','Needs you'],submission_error:['warn','Error'],mapped:['ok','Mapped']};
+  return m[status]||['info',status||'Done'];
+}
+function badge(cls,text){return `<span class="rbadge ${cls}">${esc(text)}</span>`}
+function chipList(items,cls){return (items&&items.length)?items.map(x=>`<span class="chip ${cls||''}">${esc(x)}</span>`).join(''):'<span class="muted-inline">None</span>'}
 
-$('#browserExecuteBtn')?.addEventListener('click',async()=>{const id=Number($('#browserAppId')?.value||0);if(!id)return toast('Enter an application ID','error');const dry=$('#browserDryRun')?.checked!==false;const r=await runFeature('#browserResult',`/api/applications/${id}/browser/execute?dry_run=${dry}`,{method:'POST'});if(r)toast(dry?'ATS dry run completed — nothing was submitted.':(r.submitted?'Application submitted successfully.':'Human review required.'),r.submitted?'success':'info');});
-$('#negotiateBtn')?.addEventListener('click',async()=>{const id=Number($('#offerAppId')?.value||0);const offer=Number($('#offerAmount')?.value||0),low=Number($('#marketLow')?.value||0),high=Number($('#marketHigh')?.value||0);if(!id||!offer||!low)return toast('Enter application, offer and market range','error');await runFeature('#negotiationResult',`/api/applications/${id}/negotiation`,{method:'POST',body:JSON.stringify({offer,market_low:low,market_high:high})});});
+function renderBrowserResult(el, r){
+  const [cls,label]=statusMeta(r.status);
+  let html=`<div class="result-head"><span class="rbadge ${cls}">${esc(label)}</span>${r.title?`<span class="result-title">${esc(r.title)}</span>`:''}</div>`;
+  if(r.stops?.length) html+=`<div class="notice warn"><b>Stopped for you:</b> ${r.stops.map(esc).join('; ')}</div>`;
+  if(r.reason && !r.stops?.length) html+=`<div class="notice warn">${esc(r.reason)}</div>`;
+  if(r.confirmation) html+=`<div class="notice ok"><b>Confirmed:</b> ${esc(r.confirmation)}</div>`;
+  if(r.fields?.length){
+    html+=`<div class="field-table"><div class="field-row head"><span>Field</span><span>Detected as</span><span>Action</span></div>`;
+    html+=r.fields.map(f=>{
+      const a=f.action, ai=a==='needs_you'?'⚠️':(a==='skip'?'–':'✓');
+      return `<div class="field-row"><span>${esc(f.label)}${f.required?' <em>*</em>':''}</span><span>${esc(f.kind)}</span><span class="fa ${a}">${ai} ${esc(a.replace('_',' '))}</span></div>`;
+    }).join('');
+    html+='</div>';
+  }
+  if(r.unresolved?.length) html+=`<div class="notice warn"><b>Needs your input:</b> ${r.unresolved.map(esc).join('; ')}</div>`;
+  if(r.filled?.length) html+=`<div class="notice ok"><b>Filled:</b> ${r.filled.map(esc).join(', ')}</div>`;
+  if(r.screenshot) html+=`<img class="result-shot" src="data:image/jpeg;base64,${r.screenshot}" alt="Page screenshot">`;
+  el.innerHTML=html; el.classList.add('rendered');
+}
+
+function renderAtsResult(el, r){
+  const [cls,label]=statusMeta(r.status);
+  const rows=Object.entries(r.mapping||{});
+  let html=`<div class="result-head"><span class="rbadge ${cls}">${esc(label)}</span><span class="result-title">${esc(r.platform||'generic')}</span></div>`;
+  html+=`<div class="field-table"><div class="field-row head"><span>Field</span><span>Value from your profile</span></div>`;
+  html+=rows.map(([k,v])=>`<div class="field-row"><span>${esc(k)}</span><span>${v?esc(v):'<em class="muted-inline">not set</em>'}</span></div>`).join('')||'<div class="field-row"><span colspan=2>No fields</span></div>';
+  html+='</div>';
+  if(r.unresolved?.length) html+=`<div class="notice warn"><b>Missing for required fields:</b> ${r.unresolved.map(esc).join(', ')}</div>`;
+  el.innerHTML=html; el.classList.add('rendered');
+}
+
+function scoreRing(score){
+  const pct=Math.max(0,Math.min(100,score||0)); const c=2*Math.PI*26;
+  const color = pct>=70?'var(--ok)':pct>=40?'var(--warn)':'var(--danger)';
+  return `<svg class="score-ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--surface2)" stroke-width="7"/><circle cx="32" cy="32" r="26" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c-(c*pct/100)}" transform="rotate(-90 32 32)"/><text x="32" y="37" text-anchor="middle" font-size="17" font-weight="800" fill="var(--text)">${Math.round(pct)}</text></svg>`;
+}
+function renderTailorResult(el, r){
+  let html=`<div class="score-row">${scoreRing(r.ats_score)}<div><b>Keyword alignment</b><p class="muted">How much of the job's language already appears in your profile.</p></div></div>`;
+  html+=`<div class="kw-block"><small>MATCHED</small><div class="chips">${chipList(r.matched_keywords,'ok')}</div></div>`;
+  html+=`<div class="kw-block"><small>NOT IN YOUR PROFILE</small><div class="chips">${chipList(r.missing_keywords,'warn')}</div></div>`;
+  if(r.bullet_alignment?.length){
+    html+=`<div class="kw-block"><small>YOUR EXPERIENCE BULLETS</small>`+r.bullet_alignment.slice(0,6).map(b=>`<div class="bullet-row"><span>${esc((b.bullet||'').slice(0,90))}</span>${badge(b.score>=50?'ok':'warn',(b.score||0)+'%')}</div>`).join('')+'</div>';
+  }
+  el.innerHTML=html; el.classList.add('rendered');
+}
+
+function renderTelemetryResult(el, r){
+  let html=`<div class="score-row"><div class="stat-block"><b>${r.observed_open_roles ?? 0}</b><small>open roles seen</small></div><div class="stat-block"><b>${r.observed_applications ?? 0}</b><small>your applications</small></div></div>`;
+  const statuses=Object.entries(r.application_statuses||{});
+  if(statuses.length) html+=`<div class="kw-block"><small>APPLICATION STATUSES</small><div class="chips">${statuses.map(([k,v])=>badge('info',`${k}: ${v}`)).join('')}</div></div>`;
+  if(r.limitations?.length) html+=`<div class="notice info">${r.limitations.map(esc).join(' ')}</div>`;
+  el.innerHTML=html; el.classList.add('rendered');
+}
+
+function renderTokenResult(el, r){
+  const exp=r.expires_at?new Date(r.expires_at*1000).toLocaleTimeString():'';
+  const short=(r.token||'').slice(0,18)+'…'+(r.token||'').slice(-10);
+  el.innerHTML=`<div class="notice ok">Token issued, expires ${esc(exp)}.</div><div class="token-row"><code>${esc(short)}</code><button class="mini-btn" id="copyTokenBtn">Copy full token</button></div>`;
+  el.classList.add('rendered');
+  $('#copyTokenBtn')?.addEventListener('click',()=>{navigator.clipboard?.writeText(r.token||'').then(()=>toast('Token copied','success'))});
+}
+
+function renderNegotiationResult(el, r){
+  const a=r.analysis||{};
+  el.innerHTML=`<div class="score-row"><div class="stat-block"><b>${(a.current_offer||0).toLocaleString()}</b><small>current offer</small></div><div class="stat-block"><b>${(a.reference_midpoint||0).toLocaleString()}</b><small>market midpoint</small></div><div class="stat-block"><b>${(a.counter_reference||0).toLocaleString()}</b><small>suggested ask</small></div></div>`+
+    `<div class="kw-block"><small>SUGGESTED SCRIPT</small><p class="script-box">${esc(r.script||'')}</p></div>`+
+    (a.note?`<div class="notice info">${esc(a.note)}</div>`:'');
+  el.classList.add('rendered');
+}
+
+async function runFeature(id, path, opts={}, render=null){
+  const el=$(id); if(el){el.classList.remove('rendered'); el.textContent='Working…';}
+  try{
+    const r=await api(path,opts);
+    if(el){ if(render) render(el,r); else el.textContent=JSON.stringify(r,null,2); }
+    toast('Completed successfully','success'); return r;
+  }catch(e){ if(el){el.classList.remove('rendered'); el.textContent=e.message;} toast(e.message,'error'); return null; }
+}
+$('#atsMapDemo')?.addEventListener('click',async()=>{const id=Number($('#atsAppId')?.value||0);if(!id)return toast('Choose an application first','error');const fields=[{name:'first_name',label:'First Name',required:true},{name:'last_name',label:'Last Name',required:true},{name:'email',label:'Email Address',required:true},{name:'phone',label:'Phone Number'},{name:'city',label:'City',required:true},{name:'resume',label:'Resume',type:'file',required:true}];await runFeature('#atsResult',`/api/applications/${id}/ats-map`,{method:'POST',body:JSON.stringify(fields)},renderAtsResult);});
+$('#tailorAnalyze')?.addEventListener('click',async()=>{const id=Number($('#tailorAppId')?.value||0);if(!id)return toast('Choose an application first','error');await runFeature('#tailorResult',`/api/applications/${id}/tailor/analyze`,{method:'POST'},renderTailorResult);});
+$('#telemetryBtn')?.addEventListener('click',async()=>{const c=($('#telemetryCompany')?.value||'').trim();if(!c)return toast('Enter a company name','error');await runFeature('#telemetryResult',`/api/companies/${encodeURIComponent(c)}/telemetry`,{method:'POST'},renderTelemetryResult);});
+$('#tokenBtn')?.addEventListener('click',async()=>{await runFeature('#tokenResult','/api/candidate/token',{method:'POST'},renderTokenResult);});
+$('#interviewBtn')?.addEventListener('click',async()=>{const id=Number($('#interviewJobId')?.value||0);if(!id)return toast('Choose a job first','error');const r=await runFeature('#interviewResult',`/api/interviews/mock?job_id=${id}`,{method:'POST'});if(r){const box=$('#interviewResult');if(box){box.classList.add('rendered');box.innerHTML=(r.questions||[]).map((q,i)=>`<article class="interview-card"><small>${esc((q.type||'question').toUpperCase())}</small><h4>${esc(q.question)}</h4>${q.focus?`<p class="muted">Focus: ${esc(q.focus)}</p>`:''}</article>`).join('');}}});
+
+$('#browserExecuteBtn')?.addEventListener('click',async()=>{const id=Number($('#browserAppId')?.value||0);if(!id)return toast('Choose an application first','error');const dry=$('#browserDryRun')?.checked!==false;const r=await runFeature('#browserResult',`/api/applications/${id}/browser/execute?dry_run=${dry}`,{method:'POST'},renderBrowserResult);if(r)toast(dry?'Dry run complete — nothing was submitted.':(r.submitted?'Application submitted.':'Stopped — see details.'),r.submitted?'success':'info');});
+$('#negotiateBtn')?.addEventListener('click',async()=>{const id=Number($('#offerAppId')?.value||0);const offer=Number($('#offerAmount')?.value||0),low=Number($('#marketLow')?.value||0),high=Number($('#marketHigh')?.value||0);if(!id||!offer||!low)return toast('Choose an application and enter the offer and market range','error');await runFeature('#negotiationResult',`/api/applications/${id}/negotiation`,{method:'POST',body:JSON.stringify({offer,market_low:low,market_high:high})},renderNegotiationResult);});
 
 $('#themeToggle')?.addEventListener('click',()=>{const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');const next=cur==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('jh-theme',next)}catch(e){}});
 $('#moreTab')?.addEventListener('click',()=>{$('.sidebar')?.classList.add('open');document.body.classList.add('sidebar-open')});

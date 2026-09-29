@@ -16,6 +16,10 @@ class Job(Base):
     match_score: Mapped[float] = mapped_column(Float, default=0)
     qualification: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(50), default="discovered")
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expired: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 class Application(Base):
