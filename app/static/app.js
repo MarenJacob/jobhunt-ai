@@ -138,7 +138,7 @@ function statusMeta(status){
   return m[status]||['info',status||'Done'];
 }
 function badge(cls,text){return `<span class="rbadge ${cls}">${esc(text)}</span>`}
-function chipList(items,cls){return (items&&items.length)?items.map(x=>`<span class="chip ${cls||''}">${esc(x)}</span>`).join(''):'<span class="muted-inline">None</span>'}
+function chipList(items,cls){return (items&&items.length)?items.map(x=>`<span class="chip ${cls||''}">${esc(x)}</span>`).join(' '):'<span class="muted-inline">None</span>'}
 
 function renderBrowserResult(el, r){
   const [cls,label]=statusMeta(r.status);
@@ -181,7 +181,7 @@ function renderTailorResult(el, r){
   html+=`<div class="kw-block"><small>MATCHED</small><div class="chips">${chipList(r.matched_keywords,'ok')}</div></div>`;
   html+=`<div class="kw-block"><small>NOT IN YOUR PROFILE</small><div class="chips">${chipList(r.missing_keywords,'warn')}</div></div>`;
   if(r.bullet_alignment?.length){
-    html+=`<div class="kw-block"><small>YOUR EXPERIENCE BULLETS</small>`+r.bullet_alignment.slice(0,6).map(b=>`<div class="bullet-row"><span>${esc((b.bullet||'').slice(0,90))}</span>${badge(b.score>=50?'ok':'warn',(b.score||0)+'%')}</div>`).join('')+'</div>';
+    html+=`<div class="kw-block"><small>YOUR EXPERIENCE BULLETS</small>`+r.bullet_alignment.slice(0,6).map(b=>`<div class="bullet-row"><span>${esc((b.original||'').slice(0,90))}</span>${badge(b.alignment_score>=50?'ok':'warn',(b.alignment_score||0)+'%')}</div>`).join('')+'</div>';
   }
   el.innerHTML=html; el.classList.add('rendered');
 }

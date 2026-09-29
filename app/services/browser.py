@@ -1,4 +1,4 @@
-import base64, json, os
+import base64, json, os, re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -24,16 +24,20 @@ class BrowserAutomation:
             raise SubmissionBlocked("Domain is not on the configured allowlist")
 
     async def _remote(self, payload: dict):
-        if not settings.browser_worker_url:
+        raw = (settings.browser_worker_url or "").strip()
+        if not raw:
             return None
+        url = raw if re.match(r"^https?://", raw, re.I) else "https://" + raw
         headers = {"Authorization": f"Bearer {settings.browser_worker_secret}"} if settings.browser_worker_secret else {}
         try:
             async with httpx.AsyncClient(timeout=settings.browser_worker_timeout) as client:
-                r = await client.post(settings.browser_worker_url.rstrip("/") + "/execute", json=payload, headers=headers)
+                r = await client.post(url.rstrip("/") + "/execute", json=payload, headers=headers)
             data = r.json() if r.content else {}
             if r.status_code >= 400:
                 raise SubmissionBlocked(data.get("detail") or data.get("message") or f"Browser worker returned {r.status_code}")
             return data
+        except httpx.ConnectError as e:
+            raise SubmissionBlocked(f"Could not reach the browser worker at {url}. Check that it's deployed and running, and that BROWSER_WORKER_URL is correct: {e}")
         except httpx.HTTPError as e:
             raise SubmissionBlocked(f"Browser worker unavailable: {e}")
 

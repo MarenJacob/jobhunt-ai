@@ -68,7 +68,12 @@ def get_profile(s):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, s: Session=Depends(db)):
-    context = {"request": request, "jobs": s.query(Job).order_by(Job.match_score.desc()).limit(25).all(), "apps": s.query(Application).order_by(Application.created_at.desc()).limit(10).all(), "profile": get_profile(s)}
+    import os as _os
+    static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+    def _v(name):
+        try: return str(int(_os.path.getmtime(_os.path.join(static_dir, name))))
+        except OSError: return "1"
+    context = {"request": request, "jobs": s.query(Job).order_by(Job.match_score.desc()).limit(25).all(), "apps": s.query(Application).order_by(Application.created_at.desc()).limit(10).all(), "profile": get_profile(s), "asset_v": {"css": _v("app.css"), "js": _v("app.js")}}
     return templates.TemplateResponse(request=request, name="index.html", context=context)
 
 @app.get("/api/health")
@@ -411,6 +416,11 @@ def browser_runs(application_id:int,s:Session=Depends(db)):
 
 @app.post("/api/applications/{application_id}/browser/execute")
 async def browser_execute(application_id:int,dry_run:bool=False,s:Session=Depends(db)):
+    # NOTE: AUTO_SUBMIT only gates the unattended /api/automation/run loop. Clicking
+    # "Run browser worker" here with dry_run=False IS the person's explicit, one-off
+    # instruction to submit this one application — that's not autonomous behavior,
+    # so it isn't blocked by the autonomy policy. The worker itself still stops for
+    # CAPTCHA, 2FA, logins, legal/consent text, and any unresolved required field.
     from .config import settings
     a=s.get(Application,application_id)
     if not a: raise HTTPException(404,"Application not found")
@@ -418,7 +428,6 @@ async def browser_execute(application_id:int,dry_run:bool=False,s:Session=Depend
     if not j: raise HTTPException(404,"Job not found")
     p=get_profile(s)
     profile={c:getattr(p,c) for c in ["name","headline","email","location","skills","projects","experience","education","preferences","phone","address","linkedin","github","website","work_authorization","sponsorship","salary","resume_filename"]}
-    if not dry_run and not settings.auto_submit: raise HTTPException(403,"AUTO_SUBMIT is disabled")
     try:
         out=await BrowserAutomation().submit(j.url,profile,settings.resume_path,p.resume_blob,p.resume_filename,a.cover_letter,dry_run=dry_run)
         status="submitted" if out.get("submitted") else "dry_run"

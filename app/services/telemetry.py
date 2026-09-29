@@ -1,11 +1,12 @@
 from collections import Counter
 
 def company_telemetry(company: str, jobs: list[dict], applications: list[dict]) -> dict:
-    company=(company or '').strip().lower()
-    related=[j for j in jobs if str(j.get('company','')).strip().lower()==company]
-    apps=[a for a in applications if str(a.get('company','')).strip().lower()==company]
+    display=(company or '').strip()
+    key=display.lower()
+    related=[j for j in jobs if str(j.get('company','')).strip().lower()==key]
+    apps=[a for a in applications if str(a.get('company','')).strip().lower()==key]
     return {
-      'company':company,
+      'company':display,
       'observed_open_roles':len(related),
       'observed_applications':len(apps),
       'application_statuses':dict(Counter(a.get('status','unknown') for a in apps)),
