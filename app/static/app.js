@@ -77,6 +77,7 @@ async function loadProfile(){
   const p=await api('/api/profile'); const vals=profileFields.map(([k])=>p[k]||''); const done=vals.filter(v=>String(v).trim()).length;
   const bar=$('#profileBar'); if(bar) bar.style.width=Math.round(done/profileFields.length*100)+'%'; setText('#profilePercent',Math.round(done/profileFields.length*100)+'% complete');
   profileDone=!!(String(p.name||'').trim()&&String(p.email||'').trim()); markSteps(); const ini=(p.name||'').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join(''); if(ini) setText('#avatar',ini);
+  const rn=$('#resumeName'); if(rn) rn.textContent = p.resume_filename ? `✓ On file: ${p.resume_filename}` : 'No resume on file yet';
   setHTML('#profileForm',profileFields.map(([k,l])=>`<div class="field ${['skills','projects','experience','education','preferences'].includes(k)?'full':''}"><label>${l}</label>${['skills','projects','experience','education','preferences'].includes(k)?`<textarea data-key="${k}" placeholder="Add ${l.toLowerCase()}...">${esc(p[k]||'')}</textarea>`:`<input data-key="${k}" value="${esc(p[k]||'')}" placeholder="${esc(l)}">`}</div>`).join(''));
 }
 function fillProfile(p){
@@ -89,7 +90,7 @@ function fillProfile(p){
 async function importResume(){
   const input=$('#resumeFile'); const file=input?.files?.[0]; if(!file){toast('Choose a PDF or DOCX resume first.','error');return;}
   const b=$('#importResume'); if(b){b.disabled=true;b.textContent='Parsing resume…';}
-  try{const form=new FormData();form.append('file',file);const r=await api('/api/profile/import-resume',{method:'POST',body:form});fillProfile(r.profile||{});toast(r.message||'Resume imported. Review the fields and save your profile.','success');}
+  try{const form=new FormData();form.append('file',file);const r=await api('/api/profile/import-resume',{method:'POST',body:form});fillProfile(r.profile||{});const rn=$('#resumeName'); if(rn && r.profile?.filename) rn.textContent=`✓ On file: ${r.profile.filename}`; toast(r.message||'Resume imported. Review the fields and save your profile.','success');}
   catch(e){toast(`Resume import failed: ${e.message}`,'error');}
   finally{if(b){b.disabled=false;b.textContent='Parse & auto-fill';}}
 }

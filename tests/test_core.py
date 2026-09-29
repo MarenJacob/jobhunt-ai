@@ -38,3 +38,40 @@ def test_manual_browser_submit_not_blocked_by_auto_submit_policy(monkeypatch):
     app_id = c.post('/api/applications', json={'job_id': job_id}).json()['id']
     r = c.post(f'/api/applications/{app_id}/browser/execute', params={'dry_run': False})
     assert r.status_code != 403  # must not be the old "AUTO_SUBMIT is disabled" block
+
+
+def test_resume_persists_across_profile_save_and_reload(tmp_path):
+    """Uploading a resume, then saving the profile form (which doesn't include
+    resume fields), then reloading, must not lose the resume."""
+    import io
+    from docx import Document
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    doc = Document(); [doc.add_paragraph(l) for l in ['Maren Danjuma', 'AI Application Developer', 'EDUCATION', 'B.Sc. Computer Science, Plateau State University, Bokkos', '2019 - 2024', 'SKILLS', 'Python, FastAPI, SQL']]
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    r = c.post('/api/profile/import-resume', files={'file': ('resume.docx', buf, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')})
+    assert r.status_code == 200 and r.json()['profile']['filename'] == 'resume.docx'
+    # Saving the profile form (no resume fields in this payload) must not wipe it.
+    c.post('/api/profile', json={'name': 'Maren Danjuma', 'email': 'm@example.com'})
+    got = c.get('/api/profile').json()
+    assert got['resume_filename'] == 'resume.docx'
+
+
+def test_browser_endpoints_never_500_when_worker_unconfigured(monkeypatch):
+    """The app must never crash with an unhandled 500 when BROWSER_WORKER_URL
+    is unset — it should degrade to a clear, actionable error."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.config import settings
+    monkeypatch.setattr(settings, 'browser_worker_url', '')
+    c = TestClient(app)
+    c.post('/api/profile', json={'name': 'Test User', 'email': 't3@example.com'})
+    c.post('/api/jobs', json={'title': 'Junior Dev', 'company': 'Acme', 'url': 'https://jobs.lever.co/acme/bbbbbbbb-1111-2222-3333-444455556666'})
+    job_id = c.get('/api/jobs').json()[-1]['id']
+    app_id = c.post('/api/applications', json={'job_id': job_id}).json()['id']
+    r1 = c.post(f'/api/applications/{app_id}/browser/execute', params={'dry_run': False})
+    r2 = c.post(f'/api/applications/{app_id}/inspect')
+    for r in (r1, r2):
+        assert r.status_code < 500
+        assert 'BROWSER_WORKER_URL' in r.json().get('detail', '')
