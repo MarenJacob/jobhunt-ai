@@ -4,6 +4,9 @@
       "maxDuration": 300
     }
   },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index" }
+  ],
   "crons": [
     { "path": "/api/cron/agent", "schedule": "0 8 * * *" }
   ]
