@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 
 app = FastAPI(title='JobHunt AI Browser Worker', version='2.0.0')
 SECRET = os.getenv('BROWSER_WORKER_SECRET', '')
-ALLOW = ['localhost']
+ALLOW = [x.strip().lower() for x in os.getenv('ALLOWED_DOMAINS', 'greenhouse.io,lever.co,ashbyhq.com,smartrecruiters.com,workable.com,workday.com,myworkdayjobs.com,bamboohr.com,recruitee.com,breezy.hr,jobvite.com,teamtailor.com').split(',') if x.strip()]
 PROFILE_DIR = os.getenv('BROWSER_PROFILE_DIR', '/tmp/browser-profile')
 PERSIST = os.getenv('BROWSER_PERSIST', 'false').lower() == 'true'
 HEADLESS = os.getenv('BROWSER_HEADLESS', 'true').lower() == 'true'
