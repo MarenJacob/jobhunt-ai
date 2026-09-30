@@ -37,7 +37,7 @@ def canonical_field(label,name='',id_=''):
 
 def canonical_value(profile,key,cover_letter=''):
  first,last=split_name(profile.get('name','')); loc=split_location(profile.get('location',''))
- base={'first_name':first,'last_name':last,'name':profile.get('name',''),'email':profile.get('email',''),'phone':profile.get('phone',''),'address':profile.get('address',''),'city':loc['city'],'state':loc['state'],'country':loc['country'],'linkedin':profile.get('linkedin',''),'github':profile.get('github',''),'website':profile.get('website',''),'education':profile.get('education',''),'degree':profile.get('degree',''),'resume':profile.get('resume_path',''),'cover_letter':cover_letter or profile.get('cover_letter',''),'work_authorization':profile.get('work_authorization',''),'sponsorship':profile.get('sponsorship',''),'salary':profile.get('salary',''),'job_title':profile.get('headline',''),'company':''}
+ base={'first_name':first,'last_name':last,'name':profile.get('name',''),'email':profile.get('email',''),'phone':profile.get('phone',''),'address':profile.get('address',''),'city':loc['city'],'state':loc['state'],'country':loc['country'],'linkedin':profile.get('linkedin',''),'github':profile.get('github',''),'website':profile.get('website',''),'education':profile.get('education',''),'degree':profile.get('degree',''),'resume':profile.get('resume_filename','') or profile.get('resume_path',''),'cover_letter':cover_letter or profile.get('cover_letter',''),'work_authorization':profile.get('work_authorization',''),'sponsorship':profile.get('sponsorship',''),'salary':profile.get('salary',''),'job_title':profile.get('headline',''),'company':''}
  return base.get(key,'')
 
 def map_profile(profile,fields=None):

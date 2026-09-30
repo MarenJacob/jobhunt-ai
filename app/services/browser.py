@@ -45,18 +45,30 @@ class BrowserAutomation:
         try:
             async with httpx.AsyncClient(timeout=settings.browser_worker_timeout) as client:
                 r = await client.post(url.rstrip("/") + "/execute", json=payload, headers=headers)
-            data = r.json() if r.content else {}
-            if r.status_code >= 400:
-                raise SubmissionBlocked(data.get("detail") or data.get("message") or f"Browser worker returned {r.status_code}")
-            return data
         except httpx.ConnectError as e:
             raise SubmissionBlocked(f"Could not reach the browser worker at {url}. Check that it's deployed and running, and that BROWSER_WORKER_URL is correct. ({e})")
         except httpx.HTTPError as e:
             raise SubmissionBlocked(f"Browser worker unavailable: {e}")
+        try:
+            data = r.json() if r.content else {}
+        except ValueError:
+            # The worker (or a proxy/load balancer in front of it) returned something
+            # that isn't JSON — e.g. a plain-text or HTML error page. Never let that
+            # crash this endpoint; surface it as a clear, actionable message instead.
+            snippet = (r.text or "").strip().replace("\n", " ")[:200]
+            raise SubmissionBlocked(f"Browser worker returned an unexpected response (HTTP {r.status_code}): {snippet or 'empty body'}. It may be asleep, still deploying, or crashed — check its logs.")
+        if r.status_code >= 400:
+            raise SubmissionBlocked(data.get("detail") or data.get("message") or f"Browser worker returned HTTP {r.status_code}")
+        return data
 
     async def inspect_apply_page(self, url: str):
         self._check_url(url)
-        return await self._remote({"action": "inspect", "url": url})
+        try:
+            return await self._remote({"action": "inspect", "url": url})
+        except SubmissionBlocked:
+            raise
+        except Exception as e:
+            raise SubmissionBlocked(f"Unexpected error talking to the browser worker: {e}")
 
     async def submit(self, url: str, profile: dict, resume_path: str = "", resume_bytes: bytes | None = None,
                       resume_filename: str = "resume.pdf", cover_letter: str = "", dry_run: bool = False):
@@ -64,4 +76,9 @@ class BrowserAutomation:
         resume_b64 = base64.b64encode(resume_bytes).decode("ascii") if resume_bytes else ""
         payload = {"action": "submit", "url": url, "profile": profile, "cover_letter": cover_letter,
                    "dry_run": dry_run, "resume_base64": resume_b64, "resume_filename": resume_filename}
-        return await self._remote(payload)
+        try:
+            return await self._remote(payload)
+        except SubmissionBlocked:
+            raise
+        except Exception as e:
+            raise SubmissionBlocked(f"Unexpected error talking to the browser worker: {e}")

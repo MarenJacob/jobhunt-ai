@@ -75,3 +75,42 @@ def test_browser_endpoints_never_500_when_worker_unconfigured(monkeypatch):
     for r in (r1, r2):
         assert r.status_code < 500
         assert 'BROWSER_WORKER_URL' in r.json().get('detail', '')
+
+
+def test_ats_map_reports_resume_when_present():
+    """canonical_value('resume') read the wrong profile key (resume_path, which
+    is never set) instead of resume_filename, so a real uploaded resume always
+    showed as missing in the field-mapping preview. Locks in the fix."""
+    from app.services.ats import canonical_value
+    profile = {'name': 'Test User', 'resume_filename': 'my-resume.pdf'}
+    assert canonical_value(profile, 'resume') == 'my-resume.pdf'
+    assert canonical_value({}, 'resume') == ''
+
+
+def test_browser_worker_non_json_response_does_not_crash(monkeypatch):
+    """If the worker (or a proxy in front of it, e.g. Railway's edge) returns a
+    non-JSON error page, the call must degrade to a clean error, not a 500."""
+    import httpx
+    from app.services.browser import BrowserAutomation, SubmissionBlocked
+    from app.config import settings
+    monkeypatch.setattr(settings, 'browser_worker_url', 'https://fake-worker.example.com')
+
+    class FakeResponse:
+        status_code = 502
+        content = b'<html>Bad Gateway</html>'
+        text = '<html>Bad Gateway</html>'
+        def json(self):
+            raise ValueError('not json')
+
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **kw): return FakeResponse()
+
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda *a, **kw: FakeClient())
+    import asyncio
+    try:
+        asyncio.run(BrowserAutomation().inspect_apply_page('https://jobs.lever.co/acme/aaaaaaaa-1111-2222-3333-444455556666'))
+        assert False, 'expected SubmissionBlocked'
+    except SubmissionBlocked as e:
+        assert 'unexpected response' in str(e).lower() or '502' in str(e)
