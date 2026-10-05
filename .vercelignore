@@ -1,1 +1,7 @@
+# worker/ is a separate service deployed on Railway (worker/Dockerfile), not
+# part of this Vercel app. It has its own FastAPI `app` object and its own
+# playwright dependency, which Vercel's Python zero-config builder was
+# auto-detecting as an extra serverless function and trying to deploy inside
+# this project — crashing with ModuleNotFoundError: No module named
+# 'playwright' because playwright is intentionally not installed here.
 worker/
